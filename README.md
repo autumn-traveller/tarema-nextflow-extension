@@ -1,3 +1,8 @@
+Forked from:
+
+https://github.com/nextflow-io/nextflow
+
+
 ![Nextflow logo](https://github.com/nextflow-io/trademark/blob/master/nextflow2014_no-bg.png)
 
 *"Dataflow variables are spectacularly expressive in concurrent programming"*
