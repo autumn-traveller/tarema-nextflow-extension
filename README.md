@@ -1,7 +1,5 @@
 Forked from:
-
-https://github.com/nextflow-io/nextflow
-
+https://github.com/CRC-FONDA/tarema-nextflow-extension
 
 ![Nextflow logo](https://github.com/nextflow-io/trademark/blob/master/nextflow2014_no-bg.png)
 
