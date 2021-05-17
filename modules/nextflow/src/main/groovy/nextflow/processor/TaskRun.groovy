@@ -641,6 +641,14 @@ class TaskRun implements Cloneable {
         this.code.delegate = this.context
         this.code.setResolveStrategy(Closure.DELEGATE_ONLY)
 
+//        def action = bla
+
+//        this.getConfig().setProperty("cpus",2)
+
+        def config = this.getConfig()
+
+        log.info("INSIDE RESOLVE METHOD. READING CONFIG: cpus = ${config.getCpus()} and memory = ${config.getMemory()} and disk ${config.getDisk()} and time ${config.getTime()}")
+
         // -- set the task source
         // note: this may be overwritten when a template file is used
         this.source = body.source

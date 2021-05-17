@@ -227,9 +227,9 @@ class ReportObserver implements TraceObserver {
 
         def sql = new Sql(TaskDB.getDataSource())
 
-        def insertSql = 'INSERT INTO TaskRun (task_name, cpu, rss, rchar, wchar, realtime, run_name, wf_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        def insertSql = 'INSERT INTO TaskRun (task_name, cpu, rss, rchar, wchar, cpus, memory, realtime, run_name, wf_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         // TODO add taskName
-        def params = [task.name.split(" ")[0], trace.get("%cpu"), trace.get("rss"), trace.get("rchar"), trace.get("wchar"), trace.get("realtime"), session.runName, task.container]
+        def params = [task.name.split(" ")[0], trace.get("%cpu"), trace.get("rss"), trace.get("rchar"), trace.get("wchar"), task.getConfig().getCpus(), task.getConfig().getMemory().getBytes(), trace.get("realtime"), session.runName, task.container]
         number_tasks_executed++
         if (runMetricsMap.size() < 5) {
             runMetricsMap.put("cpu", Double.valueOf(trace.get("%cpu") as String))

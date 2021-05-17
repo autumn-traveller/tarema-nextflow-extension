@@ -568,7 +568,7 @@ class TaskPollingMonitor implements TaskMonitor {
 
                     log.info(handler.getTask().container)
 
-                    def searchSql = 'SELECT * FROM (select AVG(cpu) as avg_cpu, AVG(rss) as avg_rss, AVG(rchar) as avg_rchar, avg(wchar) as avg_wchar from taskrun ' +
+                    /*def searchSql = 'SELECT * FROM (select AVG(cpu) as avg_cpu, AVG(rss) as avg_rss, AVG(rchar) as avg_rchar, avg(wchar) as avg_wchar from taskrun ' +
                             'where task_name = \'' + handler.getTask().name.split(" ")[0] + '\' and wf_name = \'' + handler.getTask().container + '\') task_avg ' +
                             'LEFT JOIN stats_task_run str ON true AND str.run_name= \'' + session.runName + '\''
 
@@ -596,7 +596,7 @@ class TaskPollingMonitor implements TaskMonitor {
                     if (labels != null) {
                         handler.getTask().setLabels(labels)
 
-                    }
+                    }*/
 
 
                     submit(handler)
