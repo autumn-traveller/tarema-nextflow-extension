@@ -641,13 +641,18 @@ class TaskRun implements Cloneable {
         this.code.delegate = this.context
         this.code.setResolveStrategy(Closure.DELEGATE_ONLY)
 
-//        def action = bla
+        def config = this.getConfig()
 
 //        this.getConfig().setProperty("cpus",2)
 
-        def config = this.getConfig()
+        if(this.name != null || getName() != null){
+            def taskName = name != null ? name : getName()
+            def action = new GradientBandit(8,taskName.split(" ")[0],0.4)
+            def oldCpu = config.getCpus()
+            config.setProperty("cpus",action.allocateCpu())
+            log.info("INSIDE RESOLVE METHOD. TASK \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was ${oldCpu}) memory = ${config.getMemory()} disk ${config.getDisk()} and time ${config.getTime()}")
+        }
 
-        log.info("INSIDE RESOLVE METHOD. READING CONFIG: cpus = ${config.getCpus()} and memory = ${config.getMemory()} and disk ${config.getDisk()} and time ${config.getTime()}")
 
         // -- set the task source
         // note: this may be overwritten when a template file is used
