@@ -643,14 +643,12 @@ class TaskRun implements Cloneable {
 
         def config = this.getConfig()
 
-//        this.getConfig().setProperty("cpus",2)
-
-        if(this.name != null || getName() != null){
-            def taskName = name != null ? name : getName()
+        def taskName = (name != null) ? name : getName()
+        if(taskName != null){
             def action = new GradientBandit(8,taskName.split(" ")[0],0.4)
             def oldCpu = config.getCpus()
             config.setProperty("cpus",action.allocateCpu())
-            log.info("INSIDE RESOLVE METHOD. TASK \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was ${oldCpu}) memory = ${config.getMemory()} disk ${config.getDisk()} and time ${config.getTime()}")
+            log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was ${oldCpu}) memory = ${config.getMemory()} disk ${config.getDisk()} and time ${config.getTime()}")
         }
 
 

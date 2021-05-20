@@ -69,28 +69,32 @@ class GradientBandit {
         }
     }
 
-    private void updatePreferences() {
+    private void updateCpuPreferences(int cpus, float usage, int realtime){
+        def r = reward(cpus, usage, realtime)
+        log.info("Task \"${taskName}\": cpus alloc'd ${cpus}, cpu usage ${usage}, realtime ${realtime} -> reward ${r}\n")
+        for (i in 0..<maxCpu) {
+            if (i == cpus - 1){
+                cpuPreferences[cpus - 1] = cpuPreferences[cpus - 1] + stepSizeCpu * (r - cpuAvgReward) * (1 - cpuProbabilities[cpus - 1])
+            } else {
+                cpuPreferences[i] = cpuPreferences[i] - stepSizeCpu * (r - cpuAvgReward) * (cpuProbabilities[i])
+            }
+        }
+
+    }
+
+    private void readPrevRewards() {
         log.info("Searching SQL for Bandit $taskName")
         def sql = new Sql(TaskDB.getDataSource())
-        def searchSql = "SELECT cpu,cpus,realtime FROM taskrun WHERE task_name = (?)"
-        def rowNum = 0
+        def searchSql = "SELECT cpus,cpu,realtime FROM taskrun WHERE task_name = (?)"
         sql.eachRow(searchSql,[taskName]) { row ->
             def cpus = (int) row.cpus
             def usage = (float) row.cpu
-            def time = (int) row.realtime
-            def r = reward(cpus, usage, time)
-            log.info("Task \"${taskName}\", row ${++rowNum} : cpu usage ${usage}, cpus alloc'd ${cpus}, realtime ${time} -> reward ${r}")
-            for (i in 0..<maxCpu) {
-                def s = ""
-                s += "action ${i+1} cpus- BEFORE: pref ${cpuPreferences[i]}, prob ${cpuProbabilities[i]}, avg reward ${cpuAvgReward}\n"
-                if(i == cpus - 1){
-                    cpuPreferences[cpus - 1] = cpuPreferences[cpus - 1] + stepSizeCpu * (r - cpuAvgReward) * (1 - cpuProbabilities[cpus - 1])
-                } else {
-                    cpuPreferences[i] = cpuPreferences[i] - stepSizeCpu * (r - cpuAvgReward) * (cpuProbabilities[i])
-                }
-                s += "action ${i+1} cpus- AFTER: pref ${cpuPreferences[i]}, prob ${cpuProbabilities[i]}, avg reward ${cpuAvgReward}"
-                log.info(s)
-            }
+            def realtime = (int) row.realtime
+            def s = "prefs and probabilities BEFORE: $cpuPreferences , $cpuProbabilities\n"
+            updateCpuPreferences(cpus,usage,realtime)
+            updateCpuProbabilities()
+            s += "prefs and probabilities AFTER: $cpuPreferences , $cpuProbabilities"
+            log.info(s)
         }
         sql.close()
         log.info("Done with SQL for Bandit $taskName")
@@ -112,12 +116,12 @@ class GradientBandit {
         double pdf = 0
         for (i in 0..<maxCpu) {
             pdf += cpuProbabilities[i]
-            if(rand <= pdf){
-                ret = i + 1
-                break
+            if (rand <= pdf){
+                return i + 1
             }
         }
-        return ret
+        log.error("Bandit couldnt pick a cpu, are the probabilities okay? ($cpuProbabilities) ... defaulting to 1 cpu")
+        return 1
     }
 
     void logBandit(){
@@ -131,7 +135,7 @@ class GradientBandit {
     }
 
     public int allocateCpu(){
-        updatePreferences()
+        readPrevRewards()
         updateCpuProbabilities()
         logBandit()
         return pickCpu(Math.random())
