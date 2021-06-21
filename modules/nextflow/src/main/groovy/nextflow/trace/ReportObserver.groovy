@@ -227,9 +227,10 @@ class ReportObserver implements TraceObserver {
 
         def sql = new Sql(TaskDB.getDataSource())
 
-        def insertSql = 'INSERT INTO TaskRun (task_name, cpu, rss, rchar, wchar, cpus, memory, realtime, run_name, wf_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        def insertSql = 'INSERT INTO TaskRun (task_name, cpu_usage, rss, peak_rss, vmem, peak_vmem, rchar, wchar, cpus, memory, realtime, run_name, wf_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         // TODO add taskName
-        def params = [task.name.split(" ")[0], trace.get("%cpu"), trace.get("rss"), trace.get("rchar"), trace.get("wchar"), task.getConfig().getCpus(), task.getConfig().getMemory().getBytes(), trace.get("realtime"), session.runName, task.container]
+        def taskName = task.name.split(" ")[0]
+        def params = [taskName, trace.get("%cpu"), trace.get("rss"), trace.get("peak_rss"), trace.get("vmem"), trace.get("peak_vmem"), trace.get("rchar"), trace.get("wchar"), task.getConfig().getCpus(), task.getConfig().getMemory().getBytes(), trace.get("realtime"), session.runName, task.container]
         number_tasks_executed++
         if (runMetricsMap.size() < 5) {
             runMetricsMap.put("cpu", Double.valueOf(trace.get("%cpu") as String))
@@ -248,7 +249,7 @@ class ReportObserver implements TraceObserver {
 
         try {
             sql.executeInsert(insertSql, params)
-            log.info("Successfully inserted" )
+            log.info("Successfully inserted $taskName")
         } catch (SQLException sqlException) {
             log.info("There was an error: " + sqlException)
         }

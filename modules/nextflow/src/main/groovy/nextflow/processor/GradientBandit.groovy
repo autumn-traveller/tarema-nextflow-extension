@@ -71,7 +71,7 @@ class GradientBandit {
 
     private void updateCpuPreferences(int cpus, float usage, int realtime){
         def r = reward(cpus, usage, realtime)
-        log.info("Task \"${taskName}\": cpus alloc'd ${cpus}, cpu usage ${usage}, realtime ${realtime} -> reward ${r}\n")
+        log.info("Task \"$taskName\": cpus alloc'd $cpus, cpu usage $usage, realtime $realtime -> reward $r\n")
         for (i in 0..<maxCpu) {
             if (i == cpus - 1){
                 cpuPreferences[cpus - 1] = cpuPreferences[cpus - 1] + stepSizeCpu * (r - cpuAvgReward) * (1 - cpuProbabilities[cpus - 1])
@@ -85,16 +85,15 @@ class GradientBandit {
     private void readPrevRewards() {
         log.info("Searching SQL for Bandit $taskName")
         def sql = new Sql(TaskDB.getDataSource())
-        def searchSql = "SELECT cpus,cpu,realtime FROM taskrun WHERE task_name = (?)"
+        def searchSql = "SELECT cpus,cpu_usage,realtime FROM taskrun WHERE task_name = (?)"
         sql.eachRow(searchSql,[taskName]) { row ->
             def cpus = (int) row.cpus
-            def usage = (float) row.cpu
+            def usage = (float) row.cpu_usage
             def realtime = (int) row.realtime
-            def s = "prefs and probabilities BEFORE: $cpuPreferences , $cpuProbabilities\n"
+            log.info("Task \"$taskName\": prefs and probabilities BEFORE: $cpuPreferences , $cpuProbabilities")
             updateCpuPreferences(cpus,usage,realtime)
             updateCpuProbabilities()
-            s += "prefs and probabilities AFTER: $cpuPreferences , $cpuProbabilities"
-            log.info(s)
+            log.info("Task \"$taskName\": prefs and probabilities AFTER: $cpuPreferences , $cpuProbabilities")
         }
         sql.close()
         log.info("Done with SQL for Bandit $taskName")
@@ -126,7 +125,7 @@ class GradientBandit {
 
     void logBandit(){
         def s = ""
-        s += "Bandit ${taskName}\n"
+        s += "Bandit $taskName\n"
         for (i in 0..<maxCpu) {
             s += "Action ${i+1} cpus: Preference ${cpuPreferences[i]} Probability ${cpuProbabilities[i]}\n"
         }
