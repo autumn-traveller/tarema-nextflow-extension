@@ -225,6 +225,10 @@ class ReportObserver implements TraceObserver {
 
     private void sendDataToDB(TaskRun task, TraceRecord trace) {
 
+        if (task.getConfig().get("bandit") != "active"){
+            return
+        }
+
         def sql = new Sql(TaskDB.getDataSource())
 
         def insertSql = 'INSERT INTO TaskRun (task_name, cpu_usage, rss, peak_rss, vmem, peak_vmem, rchar, wchar, cpus, memory, realtime, run_name, wf_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -265,12 +269,6 @@ class ReportObserver implements TraceObserver {
 
         // Bevor ein Task laufen gelassen wird, müssen wir die DB checken, ob der Task bereits lief
         // dann z.B nach 0,1 epsillon eine neue Config wählen
-
-        // Wir müssen eine Liste der Nodes hier abrufen
-        // Wir müssen dem Executor als zusätzliches Argument die präferierten Node übergeben
-        // Kubernetes: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/
-
-        // Unser CC könnte Kub labels erstellen -> automatisiert
 
     }
 

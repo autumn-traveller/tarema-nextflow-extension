@@ -5,7 +5,7 @@ import groovy.util.logging.Slf4j
 import nextflow.TaskDB
 
 @Slf4j
-class GradientBandit {
+class MemoryBandit {
     int maxCpu
     double[] cpuPreferences
     double[] cpuProbabilities
