@@ -17,13 +17,20 @@
 
 package nextflow.trace
 
+import groovy.sql.Sql
 import groovy.transform.CompileStatic
+import groovy.util.logging.Slf4j
 import jline.TerminalFactory
 import nextflow.Session
+import nextflow.TaskDB
+import nextflow.container.ContainerHandler
 import nextflow.processor.TaskHandler
 import nextflow.util.Duration
 import org.fusesource.jansi.Ansi
 import org.fusesource.jansi.AnsiConsole
+
+import java.sql.SQLException
+
 import static nextflow.util.LoggerHelper.isHashLogPrefix
 import static org.fusesource.jansi.Ansi.Attribute
 import static org.fusesource.jansi.Ansi.Color
@@ -35,6 +42,7 @@ import static org.fusesource.jansi.Ansi.ansi
  *
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
+@Slf4j
 @CompileStatic
 class AnsiLogObserver implements TraceObserver {
 
@@ -308,6 +316,18 @@ class AnsiLogObserver implements TraceObserver {
 
     protected void renderSummary(WorkflowStats stats) {
         final delta = endTimestamp-startTimestamp
+
+        def sql = new Sql(TaskDB.getDataSource())
+        def insertSql = 'INSERT INTO Runs (run_name, command, duration, start, finish) VALUES (?, ?, ?, ?, ?)'
+        def params = [session.runName,session.commandLine.split(' ')[2],delta,endTimestamp,startTimestamp]
+        log.info("params: $params")
+        try {
+            sql.executeInsert(insertSql, params as List<Object>)
+            log.info("Successfully inserted run summary")
+        } catch (SQLException sqlException) {
+            log.info("There was an error: " + sqlException)
+        }
+
         if( enableSummary == false )
             return
         if( enableSummary == null && delta <= 60*1_000 )
