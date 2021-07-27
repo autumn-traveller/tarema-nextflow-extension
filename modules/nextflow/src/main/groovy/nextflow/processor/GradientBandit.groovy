@@ -71,12 +71,17 @@ class GradientBandit {
 
     private void updateCpuPreferences(int cpus, float usage, int realtime){
         def r = reward(cpus, usage, realtime)
-        log.info("Task \"$taskName\": cpus alloc'd $cpus, cpu usage $usage, realtime $realtime -> reward $r\n")
+        log.info("Task \"$taskName\": cpus alloc'd $cpus, cpu usage $usage, realtime $realtime -> reward $r (avg reward so far: $cpuAvgReward)\n")
         for (i in 0..<maxCpu) {
             if (i == cpus - 1){
-                cpuPreferences[cpus - 1] = cpuPreferences[cpus - 1] + stepSizeCpu * (r - cpuAvgReward) * (1 - cpuProbabilities[cpus - 1])
+                def oldval = cpuPreferences[i]
+                cpuPreferences[i] = cpuPreferences[i] + stepSizeCpu * (r - cpuAvgReward) * (1 - cpuProbabilities[i])
+                //log.info("Task \"$taskName\": update (allocd cpus) preference: cpuPreferences[$i] = $oldval + $stepSizeCpu * ($r - $cpuAvgReward) * (1 - ${cpuProbabilities[i]}) = ${cpuPreferences[i]}\n")
             } else {
+                def oldval = cpuPreferences[i]
                 cpuPreferences[i] = cpuPreferences[i] - stepSizeCpu * (r - cpuAvgReward) * (cpuProbabilities[i])
+                //log.info("Task \"$taskName\": update rest preferences: cpuPreferences[$i] = $oldval - $stepSizeCpu * ($r - $cpuAvgReward) *  ${cpuProbabilities[i]} = ${cpuPreferences[i]}\n")
+
             }
         }
 
@@ -99,7 +104,7 @@ class GradientBandit {
         log.info("Done with SQL for Bandit $taskName")
     }
 
-    int reward(int cpuCount, float usage, int realtime) {
+    double reward(int cpuCount, float usage, int realtime) {
         // aim for 100% usage of the allocated cpus- overusage is treated as equally bad as underusage
         // highest reward comes with precisely 100% cpu usage and minimal runtime
         // reward is negative so we want to keep its absolute value small since we are using it with the exp() function
@@ -135,8 +140,7 @@ class GradientBandit {
 
     public int allocateCpu(){
         readPrevRewards()
-        updateCpuProbabilities()
-        logBandit()
+        //logBandit()
         return pickCpu(Math.random())
     }
 
