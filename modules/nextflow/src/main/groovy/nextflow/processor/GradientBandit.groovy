@@ -98,7 +98,7 @@ class GradientBandit {
     private void readPrevRewards() {
         logInfo("Searching SQL for Bandit $taskName")
         def sql = new Sql(TaskDB.getDataSource())
-        def searchSql = "SELECT cpus,cpu_usage,realtime FROM taskrun WHERE task_name = (?)"
+        def searchSql = "SELECT cpus,cpu_usage,realtime FROM taskrun WHERE task_name = (?) and rl_active = true"
         sql.eachRow(searchSql,[taskName]) { row ->
             def cpus = (int) row.cpus
             def usage = (float) row.cpu_usage
