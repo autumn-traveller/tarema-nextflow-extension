@@ -10,10 +10,10 @@
 build/**
 modules/**/build/
 modules/**/*.iml
-modules/nextflow/work/
+modules/nextflow/work*/
 **/out/*
 tmp/*
-work/*
+work*/*
 nextflow.eml
 nextflow.iml
 Vagrantfile
