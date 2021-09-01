@@ -69,18 +69,26 @@ class GradientBandit {
         }
     }
 
+    boolean enable_logs = true
+
+    private void logInfo(String var1, Object... var2){
+        if(enable_logs){
+            log.info(var1,var2)
+        }
+    }
+
     private void updateCpuPreferences(int cpus, float usage, int realtime){
         def r = reward(cpus, usage, realtime)
-        log.info("Task \"$taskName\": cpus alloc'd $cpus, cpu usage $usage, realtime $realtime -> reward $r (avg reward so far: $cpuAvgReward)\n")
+        logInfo("Task \"$taskName\": cpus alloc'd $cpus, cpu usage $usage, realtime $realtime -> reward $r (avg reward so far: $cpuAvgReward)\n")
         for (i in 0..<maxCpu) {
             if (i == cpus - 1){
                 def oldval = cpuPreferences[i]
                 cpuPreferences[i] = cpuPreferences[i] + stepSizeCpu * (r - cpuAvgReward) * (1 - cpuProbabilities[i])
-                //log.info("Task \"$taskName\": update (allocd cpus) preference: cpuPreferences[$i] = $oldval + $stepSizeCpu * ($r - $cpuAvgReward) * (1 - ${cpuProbabilities[i]}) = ${cpuPreferences[i]}\n")
+                logInfo("Task \"$taskName\": update (allocd cpus) preference: cpuPreferences[$i] = $oldval + $stepSizeCpu * ($r - $cpuAvgReward) * (1 - ${cpuProbabilities[i]}) = ${cpuPreferences[i]}\n")
             } else {
                 def oldval = cpuPreferences[i]
                 cpuPreferences[i] = cpuPreferences[i] - stepSizeCpu * (r - cpuAvgReward) * (cpuProbabilities[i])
-                //log.info("Task \"$taskName\": update rest preferences: cpuPreferences[$i] = $oldval - $stepSizeCpu * ($r - $cpuAvgReward) *  ${cpuProbabilities[i]} = ${cpuPreferences[i]}\n")
+                logInfo("Task \"$taskName\": update rest preferences: cpuPreferences[$i] = $oldval - $stepSizeCpu * ($r - $cpuAvgReward) *  ${cpuProbabilities[i]} = ${cpuPreferences[i]}\n")
 
             }
         }
@@ -88,27 +96,28 @@ class GradientBandit {
     }
 
     private void readPrevRewards() {
-        log.info("Searching SQL for Bandit $taskName")
+        logInfo("Searching SQL for Bandit $taskName")
         def sql = new Sql(TaskDB.getDataSource())
         def searchSql = "SELECT cpus,cpu_usage,realtime FROM taskrun WHERE task_name = (?)"
         sql.eachRow(searchSql,[taskName]) { row ->
             def cpus = (int) row.cpus
             def usage = (float) row.cpu_usage
             def realtime = (int) row.realtime
-            log.info("Task \"$taskName\": prefs and probabilities BEFORE: $cpuPreferences , $cpuProbabilities")
+            logInfo("Task \"$taskName\": prefs and probabilities BEFORE: $cpuPreferences , $cpuProbabilities")
             updateCpuPreferences(cpus,usage,realtime)
             updateCpuProbabilities()
-            log.info("Task \"$taskName\": prefs and probabilities AFTER: $cpuPreferences , $cpuProbabilities")
+            logInfo("Task \"$taskName\": prefs and probabilities AFTER: $cpuPreferences , $cpuProbabilities")
         }
         sql.close()
-        log.info("Done with SQL for Bandit $taskName")
+        logInfo("Done with SQL for Bandit $taskName")
     }
 
     double reward(int cpuCount, float usage, int realtime) {
-        // aim for 100% usage of the allocated cpus- overusage is treated as equally bad as underusage
-        // highest reward comes with precisely 100% cpu usage and minimal runtime
+        // aim for 100% usage of the allocated cpus- overusage is considered equally bad as underusage
+        // highest reward comes with precisely 100% usage of the available cpus and minimal runtime
         // reward is negative so we want to keep its absolute value small since we are using it with the exp() function
-        double r = -1 * realtime/60 * (1 + Math.abs(cpuCount - usage/100))
+        // divide by 1000 because realtime measurements are inaccurate for tasks with runtimes smaller than 1s
+        double r = -1 * (realtime/1000) * (1 + Math.abs(cpuCount - usage/100))
 //        double r = -1 * cpuCount * realtime
         cpuAvgReward = (numRuns * cpuAvgReward + r)/(numRuns + 1)
         numRuns++
@@ -135,7 +144,7 @@ class GradientBandit {
             s += "Action ${i+1} cpus: Preference ${cpuPreferences[i]} Probability ${cpuProbabilities[i]}\n"
         }
         s += "$cpuAvgReward"
-        log.info(s)
+        logInfo(s)
     }
 
     public int allocateCpu(){
