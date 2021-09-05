@@ -77,9 +77,9 @@ class GradientBandit {
         }
     }
 
-    private void updateCpuPreferences(int cpus, float usage, int realtime){
-        def r = reward(cpus, usage, realtime)
-        logInfo("Task \"$taskName\": cpus alloc'd $cpus, cpu usage $usage, realtime $realtime -> reward $r (avg reward so far: $cpuAvgReward)\n")
+    private void updateCpuPreferences(int cpus, float usage){
+        def r = reward(cpus, usage)
+        logInfo("Task \"$taskName\": cpus alloc'd $cpus, cpu usage $usage-> reward $r (avg reward so far: $cpuAvgReward)\n")
         for (i in 0..<maxCpu) {
             if (i == cpus - 1){
                 def oldval = cpuPreferences[i]
@@ -98,13 +98,12 @@ class GradientBandit {
     private void readPrevRewards() {
         logInfo("Searching SQL for Bandit $taskName")
         def sql = new Sql(TaskDB.getDataSource())
-        def searchSql = "SELECT cpus,cpu_usage,realtime FROM taskrun WHERE task_name = (?) and rl_active = true"
+        def searchSql = "SELECT cpus,cpu_usage FROM taskrun WHERE task_name = (?) and rl_active = true"
         sql.eachRow(searchSql,[taskName]) { row ->
             def cpus = (int) row.cpus
             def usage = (float) row.cpu_usage
-            def realtime = (int) row.realtime
             logInfo("Task \"$taskName\": prefs and probabilities BEFORE: $cpuPreferences , $cpuProbabilities")
-            updateCpuPreferences(cpus,usage,realtime)
+            updateCpuPreferences(cpus,usage)
             updateCpuProbabilities()
             logInfo("Task \"$taskName\": prefs and probabilities AFTER: $cpuPreferences , $cpuProbabilities")
         }
@@ -112,13 +111,12 @@ class GradientBandit {
         logInfo("Done with SQL for Bandit $taskName")
     }
 
-    double reward(int cpuCount, float usage, int realtime) {
-        // aim for 100% usage of the allocated cpus- overusage is considered equally bad as underusage
-        // highest reward comes with precisely 100% usage of the available cpus and minimal runtime
-        // reward is negative so we want to keep its absolute value small since we are using it with the exp() function
-        // divide by 1000 because realtime measurements are inaccurate for tasks with runtimes smaller than 1s
-        double r = -1 * (realtime/1000) * (1 + Math.abs(cpuCount - usage/100))
-//        double r = -1 * cpuCount * realtime
+    double reward(int cpuCount, float usage) {
+        // reward function is maximized when cpuUsage = cpuAllocation
+        // However to account for when more than 100% of the cpus are used we subtract from 100 the absolute difference between the actual cpuUsage and 100% usage
+        // Therefore 95% and 105% usage both yield the same reward -> 95
+        // since the usage field normally needs to be divided by 100 first, usage divided cpuCount converts directly to a percentage
+        double r = 100 - Math.abs(100 - usage/cpuCount)
         cpuAvgReward = (numRuns * cpuAvgReward + r)/(numRuns + 1)
         numRuns++
         return r
