@@ -320,10 +320,12 @@ class AnsiLogObserver implements TraceObserver {
         def sql = new Sql(TaskDB.getDataSource())
         def insertSql = 'INSERT INTO Runs (run_name, command, duration, start, finish, rl_active) VALUES (?, ?, ?, ?, ?, ?)'
         def params = [session.runName,session.commandLine.split(' ')[2],delta,endTimestamp,startTimestamp,true]
-        log.info("params: $params")
+        log.info("params: $params, success: ${session.isSuccess()}")
         try {
-            sql.executeInsert(insertSql, params as List<Object>)
-            log.info("Successfully inserted run summary")
+            if(session.isSuccess()){
+                sql.executeInsert(insertSql, params as List<Object>)
+                log.info("Successfully inserted run summary")
+            }
         } catch (SQLException sqlException) {
             log.info("There was an error: " + sqlException)
         }
