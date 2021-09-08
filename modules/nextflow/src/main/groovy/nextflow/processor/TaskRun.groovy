@@ -21,10 +21,12 @@ import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
 import com.google.common.hash.HashCode
+import groovy.sql.Sql
 import groovy.transform.Memoized
 import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
 import nextflow.Session
+import nextflow.TaskDB
 import nextflow.conda.CondaCache
 import nextflow.conda.CondaConfig
 import nextflow.container.ContainerConfig
@@ -645,7 +647,7 @@ class TaskRun implements Cloneable {
 
         def taskName = (name != null) ? name : getName()
         if(taskName != null){
-            def action = new GradientBandit(8,taskName.split(" ")[0],0.1)
+            def action = new GradientBandit(8,taskName.split(" ")[0])
             def oldCpu = config.getCpus()
             def allocd = action.allocateCpu()
             if (allocd > 0){
