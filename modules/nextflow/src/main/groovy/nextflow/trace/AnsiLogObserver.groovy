@@ -319,7 +319,7 @@ class AnsiLogObserver implements TraceObserver {
 
         def sql = new Sql(TaskDB.getDataSource())
         def insertSql = 'INSERT INTO Runs (run_name, command, duration, start, finish, rl_active) VALUES (?, ?, ?, ?, ?, ?)'
-        def params = [session.runName,session.commandLine.split(' ')[2],delta,endTimestamp,startTimestamp,false]
+        def params = [session.runName,session.commandLine.split(' ')[2],delta,startTimestamp,endTimestamp,false]
         log.info("params: $params")
         try {
             if(session.isSuccess()){
