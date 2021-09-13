@@ -85,7 +85,8 @@ class GradientBandit {
             def searchSql = "SELECT AVG(realtime) FROM taskrun WHERE task_name = (?)" // "and rl_active = false"
             sql.eachRow(searchSql,[taskName]) { row ->
                 if(row.avg && row.avg > 5000) {
-                    def modFactor = 1000 // we divide by 1000 because the bandit's reward function does too
+                    //def modFactor = 1000 // we divide by 1000 because the bandit's reward function does too
+                    def modFactor = 2000 // 1k was too small for the bandits between 5 and 10k
 
                     // the commented out stepSize values are reference values that the stepSize should be close to
 //                    if(row.avg > 5000) {
