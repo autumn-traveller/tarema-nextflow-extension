@@ -21,10 +21,13 @@ import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
 import com.google.common.hash.HashCode
+import groovy.sql.Sql
 import groovy.transform.Memoized
 import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
 import nextflow.Session
+import nextflow.cli.CmdRun
+import nextflow.TaskDB
 import nextflow.conda.CondaCache
 import nextflow.conda.CondaConfig
 import nextflow.container.ContainerConfig
@@ -643,9 +646,12 @@ class TaskRun implements Cloneable {
 
         def config = this.getConfig()
 
+        def withLearning = this.processor.getSession().config.withLearning
+
         def taskName = (name != null) ? name : getName()
-        if(taskName != null){
-            def action = new GradientBandit(8,taskName.split(" ")[0],0.1)
+        if(taskName != null && withLearning ){
+//            log.warn("learning is active, enableing gradient bandit")
+            def action = new GradientBandit(2,taskName.split(" ")[0])
             def oldCpu = config.getCpus()
             def allocd = action.allocateCpu()
             if (allocd > 0){
@@ -655,6 +661,9 @@ class TaskRun implements Cloneable {
             } else {
                 config.put("bandit","inactive")
             }
+        } else if(!withLearning){
+//            log.warn("vanilla mode, not using gradient bandit")
+            config.put("vanilla","active")
         }
 
 
