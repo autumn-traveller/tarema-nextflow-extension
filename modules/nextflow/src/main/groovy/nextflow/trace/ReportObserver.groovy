@@ -225,7 +225,7 @@ class ReportObserver implements TraceObserver {
 
     private void sendDataToDB(TaskRun task, TraceRecord trace) {
 
-        if (task.getConfig().get("bandit") != "active"){
+        if (task.getConfig().get("bandit") != "active" && task.getConfig().get("vanilla") != "active"){
             return
         }
 
@@ -234,7 +234,7 @@ class ReportObserver implements TraceObserver {
         def insertSql = 'INSERT INTO TaskRun (task_name, cpu_usage, mem_usage, rss, peak_rss, vmem, peak_vmem, rchar, wchar, cpus, memory, realtime, duration, rl_active, run_name, wf_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         // TODO add taskName
         def taskName = task.name.split(" ")[0]
-        def params = [taskName, trace.get("%cpu"), trace.get("%mem"), trace.get("rss"), trace.get("peak_rss"), trace.get("vmem"), trace.get("peak_vmem"), trace.get("rchar"), trace.get("wchar"), task.getConfig().getCpus(), task.getConfig().getMemory().getBytes(), trace.get("realtime"), trace.get("duration"), true, session.runName, task.container]
+        def params = [taskName, trace.get("%cpu"), trace.get("%mem"), trace.get("rss"), trace.get("peak_rss"), trace.get("vmem"), trace.get("peak_vmem"), trace.get("rchar"), trace.get("wchar"), task.getConfig().getCpus(), task.getConfig().getMemory().getBytes(), trace.get("realtime"), trace.get("duration"), session.config.withLearning, session.runName, task.container]
         number_tasks_executed++
         if (runMetricsMap.size() < 5) {
             runMetricsMap.put("cpu", Double.valueOf(trace.get("%cpu") as String))

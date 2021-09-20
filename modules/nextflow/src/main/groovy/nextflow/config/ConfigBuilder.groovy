@@ -668,6 +668,14 @@ class ConfigBuilder {
         if( cmdRun.withCharliecloud ) {
             configContainer(config, 'charliecloud', cmdRun.withCharliecloud)
         }
+
+        if(cmdRun.withLearning) {
+            log.warn("reinforcement learning is active")
+            config.withLearning = true
+        } else {
+            log.warn("reinforcement learning is NOT active")
+            config.withLearning = false
+        }
     }
 
     private void configContainer(ConfigObject config, String engine, def cli) {
