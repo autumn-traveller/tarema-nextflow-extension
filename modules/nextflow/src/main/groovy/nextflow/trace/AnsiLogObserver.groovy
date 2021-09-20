@@ -317,12 +317,12 @@ class AnsiLogObserver implements TraceObserver {
     protected void renderSummary(WorkflowStats stats) {
         final delta = endTimestamp-startTimestamp
 
-        def sql = new Sql(TaskDB.getDataSource())
-        def insertSql = 'INSERT INTO Runs (run_name, command, duration, start, finish, rl_active) VALUES (?, ?, ?, ?, ?, ?)'
-        def params = [session.runName,session.commandLine.split(' ')[2],delta,startTimestamp,endTimestamp,true]
-        log.info("params: $params, success: ${session.isSuccess()}")
         try {
             if(session.isSuccess()){
+                def sql = new Sql(TaskDB.getDataSource())
+                def insertSql = 'INSERT INTO Runs (run_name, command, duration, start, finish, rl_active) VALUES (?, ?, ?, ?, ?, ?)'
+                def params = [session.runName,session.commandLine.split(' ')[2],delta,startTimestamp,endTimestamp,session.config.withLearning]
+                log.info("params: $params, success: ${session.isSuccess()}")
                 sql.executeInsert(insertSql, params as List<Object>)
                 log.info("Successfully inserted run summary")
             }

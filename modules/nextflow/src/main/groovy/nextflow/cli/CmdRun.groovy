@@ -32,6 +32,7 @@ import groovy.util.logging.Slf4j
 import groovyx.gpars.GParsConfig
 import nextflow.Const
 import nextflow.NextflowMeta
+import nextflow.cli.CliOptions
 import nextflow.config.ConfigBuilder
 import nextflow.exception.AbortOperationException
 import nextflow.file.FileHelper
@@ -226,6 +227,9 @@ class CmdRun extends CmdBase implements HubOptions {
 
     @Parameter(names=['-stub-run','-stub'], description = 'Execute the workflow replacing process scripts with command stubs')
     boolean stubRun
+
+    @Parameter(names=['-with-learning','with-rl','-learning','-rl'], description = 'Use reinforcement learning to assign resources for tasks in the workflow')
+    boolean withLearning
 
     @Override
     String getName() { NAME }
