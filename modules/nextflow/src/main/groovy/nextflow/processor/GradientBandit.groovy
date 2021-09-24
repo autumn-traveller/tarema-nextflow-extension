@@ -63,7 +63,7 @@ class GradientBandit {
     public GradientBandit(int cpus, String taskName){
         this.taskName = taskName
         this.maxCpu = cpus
-        this.stepSizeCpu = 0.025
+        this.stepSizeCpu = 0.01
         this.cpuPreferences = new double[maxCpu] // 0 to start
         this.cpuProbabilities = new double[maxCpu]
         for (i in 0..<maxCpu) {
@@ -83,7 +83,7 @@ class GradientBandit {
         }
     }
 
-    boolean enable_logs = false
+    boolean enable_logs = false 
 
     private void logInfo(String var1, Object... var2){
         if(enable_logs){
@@ -116,7 +116,7 @@ class GradientBandit {
         sql.eachRow(searchSql,[taskName]) { row ->
             def cpus = (int) row.cpus
             def usage = (float) row.cpu_usage
-            logInfo("Task \"$taskName\": prefs and probabilities BEFORE: $cpuPreferences , $cpuProbabilities")
+            logInfo("Task \"$taskName\": probabilities BEFORE: $cpuProbabilities")
             updateCpuPreferences(cpus,usage)
             updateCpuProbabilities()
             logInfo("Task \"$taskName\": probabilities AFTER: $cpuProbabilities")
@@ -129,7 +129,7 @@ class GradientBandit {
         // reward function is maximized when cpuUsage = 115% of the allocated cpus, we dont want to underuse or overclock them
         // Therefore 110% and 120% usage both yield the same reward -> -5
         // since the usage field normally needs to be divided by 100 first, usage divided cpuCount converts directly to a percentage
-        double r = -1 * Math.abs(115 - usage/cpuCount)
+        double r = -1 * Math.abs(110 - usage/cpuCount)
         cpuAvgReward = (numRuns * cpuAvgReward + r)/(numRuns + 1)
         numRuns++
         return r
