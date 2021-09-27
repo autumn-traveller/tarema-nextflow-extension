@@ -129,7 +129,7 @@ class GradientBandit {
         // reward function is maximized when cpuUsage = 115% of the allocated cpus, we dont want to underuse or overclock them
         // Therefore 110% and 120% usage both yield the same reward -> -5
         // since the usage field normally needs to be divided by 100 first, usage divided cpuCount converts directly to a percentage
-        double r = -1 * Math.abs(110 - usage/cpuCount)
+        double r = -1 * Math.abs(100 - usage/cpuCount)
         cpuAvgReward = (numRuns * cpuAvgReward + r)/(numRuns + 1)
         numRuns++
         return r
