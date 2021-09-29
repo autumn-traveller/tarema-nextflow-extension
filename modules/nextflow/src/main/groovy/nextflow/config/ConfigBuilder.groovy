@@ -670,8 +670,10 @@ class ConfigBuilder {
         }
 
         if(cmdRun.withLearning) {
-            log.warn("reinforcement learning is active")
+            log.warn("reinforcement learning is active:  maxcpus = ${cmdRun.maxConfiguredCpus}, withLogs = ${cmdRun.logRl}")
             config.withLearning = true
+            config.logRl = cmdRun.logRl
+            config.maxConfiguredCpus = cmdRun.maxConfiguredCpus
         } else {
             log.warn("reinforcement learning is NOT active")
             config.withLearning = false
