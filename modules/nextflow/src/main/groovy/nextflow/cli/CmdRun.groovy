@@ -228,8 +228,14 @@ class CmdRun extends CmdBase implements HubOptions {
     @Parameter(names=['-stub-run','-stub'], description = 'Execute the workflow replacing process scripts with command stubs')
     boolean stubRun
 
-    @Parameter(names=['-with-learning','with-rl','-learning','-rl'], description = 'Use reinforcement learning to assign resources for tasks in the workflow')
+    @Parameter(names=['-with-learning','-with-rl','-learning','-rl'], description = 'Use reinforcement learning to assign resources for tasks in the workflow')
     boolean withLearning
+
+    @Parameter(names=['-rlLogs','-with-logs','-log-rl'], description = 'Enable logs for the reinforcement learning uni')
+    boolean logRl
+
+    @Parameter(names=['-cpus','-max-cpus'], description = 'Maximum cpus to assign')
+    int maxConfiguredCpus
 
     @Override
     String getName() { NAME }
