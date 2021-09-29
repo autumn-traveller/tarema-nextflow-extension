@@ -645,8 +645,11 @@ class TaskRun implements Cloneable {
         this.code.setResolveStrategy(Closure.DELEGATE_ONLY)
 
         def config = this.getConfig()
+        def sessionConfig = this.processor.getSession().config
+        def withLearning = sessionConfig.withLearning
+        boolean withLogs = sessionConfig.logRl
+        def maxcpus = sessionConfig.maxConfiguredCpus
 
-        def withLearning = this.processor.getSession().config.withLearning
 
         def taskName = (name != null) ? name : getName()
         if(taskName != null && withLearning ){
