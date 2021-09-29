@@ -175,12 +175,7 @@ class GradientBandit {
     }
 
     double reward(int cpuCount, float usage, int realtime) {
-        // aim for 100% usage of the allocated cpus- overusage is considered equally bad as underusage
-        // highest reward comes with precisely 100% usage of the available cpus and minimal runtime
-        // reward is negative so we want to keep its absolute value small since we are using it with the exp() function
-        // divide by 1000 because realtime measurements are inaccurate for tasks with runtimes smaller than 1s
-        double r = -1 * (realtime/1000) * (1 + Math.abs(cpuCount - usage/100))
-//        double r = -1 * cpuCount * realtime
+        double r = -1 * (realtime/1000)
         cpuAvgReward = (numRuns * cpuAvgReward + r)/(numRuns + 1)
         numRuns++
         return r
