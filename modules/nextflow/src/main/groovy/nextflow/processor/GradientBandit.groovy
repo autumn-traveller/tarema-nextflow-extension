@@ -11,41 +11,9 @@ class GradientBandit {
     double[] cpuPreferences
     double[] cpuProbabilities
     double cpuAvgReward
-    long maxMem
-    long minMem
-    int memChunkSize
-    int numChunks
-    double[] memoryPreferences
-    double[] memoryProbabilities
-    double memoryAvgReward
     double stepSizeCpu
-    double stepSizeMem
     String taskName
     int numRuns
-
-    public GradientBandit(int maxCpu, long minMem, long maxMem, int chunkSize, int numChunks, double stepSizeCpu, double stepSizeMem, String taskName){
-        this.maxCpu = maxCpu
-        this.minMem = minMem
-        this.maxMem = maxMem
-        this.memChunkSize = chunkSize
-        this.numChunks = numChunks
-        this.stepSizeCpu = stepSizeCpu
-        this.stepSizeMem = stepSizeMem
-        this.taskName = taskName
-        this.cpuPreferences = new double[maxCpu]
-        this.cpuProbabilities = new double[maxCpu]
-        for (i in 0..<maxCpu) {
-            cpuProbabilities[i] = 1/((double)maxCpu)
-        }
-        this.cpuAvgReward = 0
-        this.memoryPreferences = numChunks >= 0 ? new double [numChunks] : null
-        this.memoryProbabilities = numChunks >= 0 ? new double [numChunks] : null
-        for (i in 0..<numChunks) {
-            memoryProbabilities[i] = 1.0/((double)numChunks)
-        }
-        this.memoryAvgReward = 0
-        numRuns = 0
-    }
 
     public GradientBandit(int cpus, String taskName, double stepSize){
         this.taskName = taskName
@@ -60,7 +28,7 @@ class GradientBandit {
         this.numRuns = 0
     }
 
-    public GradientBandit(int cpus, String taskName){
+    public GradientBandit(int cpus, String taskName, boolean withLogs){
         this.taskName = taskName
         this.maxCpu = cpus
         this.stepSizeCpu = 0.01
@@ -71,6 +39,7 @@ class GradientBandit {
         }
         this.cpuAvgReward = 0
         this.numRuns = 0
+        this.enable_logs = withLogs
     }
 
     private void updateCpuProbabilities(){
@@ -126,9 +95,6 @@ class GradientBandit {
     }
 
     double reward(int cpuCount, float usage) {
-        // reward function is maximized when cpuUsage = 115% of the allocated cpus, we dont want to underuse or overclock them
-        // Therefore 110% and 120% usage both yield the same reward -> -5
-        // since the usage field normally needs to be divided by 100 first, usage divided cpuCount converts directly to a percentage
         double r = -1 * Math.abs(100 - usage/cpuCount)
         cpuAvgReward = (numRuns * cpuAvgReward + r)/(numRuns + 1)
         numRuns++
