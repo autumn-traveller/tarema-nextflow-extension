@@ -6,90 +6,96 @@ import nextflow.TaskDB
 
 @Slf4j
 class MemoryBandit {
+    final int numActions = 5
+    final int NOOP = 0
+    final int DECR_MEM = 1
+    final int INCR_MEM = 2
+    final int DECR_CPU = 3
+    final int INCR_CPU = 4
+
+    int state
+    int numStates
     int maxCpu
-    double[] cpuPreferences
-    double[] cpuProbabilities
-    double cpuAvgReward
-    long maxMem
     long minMem
-    int chunkSize
-    int numChunks
-    double[] memoryPreferences
-    double[] memoryProbabilities
-    double memoryAvgReward
-    double stepSizeCpu
-    double stepSizeMem
+    long maxMem
+    long chunkSize
+    double [] [] q
+    boolean [] [] visited
+    int [] [] timesTried
+    float stepSize
+    float discount
     String taskName
-    int numRuns
+    float epsilon
 
-    public MemoryBandit(int maxCpu, long minMem, long maxMem, int chunkSize, int numChunks, double stepSizeCpu, double stepSizeMem, String taskName){
-        this.maxCpu = maxCpu
-        this.minMem = minMem
-        this.maxMem = maxMem
+    public MemoryBandit(int initialCpu, int maxCpu, long initialMem, long chunkSize, int numChunks, float stepSize, float discount, float epsilon, String taskName){
+        // limit our initial state space based on the original config
+        if(initialCpu == 1){
+            this.maxCpu = maxCpu > 4 ? 4 : maxCpu
+        }
+        if(initialCpu == 2){
+            this.maxCpu = maxCpu > 6 ? 6 : maxCpu
+        }
+        if(initialCpu > 2){
+            this.maxCpu = maxCpu > initialCpu*4 ? initialCpu*4 : maxCpu
+        }
+        this.maxMem = initialMem + numChunks/2 * chunkSize
+        this.minMem = initialMem - numChunks/2 * chunkSize
+
+        //TODO whats the plan for numStates and chunkSize
+        this.numStates = numChunks
         this.chunkSize = chunkSize
-        this.numChunks = numChunks
-        this.stepSizeCpu = stepSizeCpu
-        this.stepSizeMem = stepSizeMem
-        this.taskName = taskName
-        this.cpuPreferences = new double[maxCpu]
-        this.cpuProbabilities = new double[maxCpu]
-        for (i in 0..<maxCpu) {
-            cpuProbabilities[i] = 1/((double)maxCpu)
-        }
-        this.cpuAvgReward = 0
-        this.memoryPreferences = numChunks >= 0 ? new double [numChunks] : null
-        this.memoryProbabilities = numChunks >= 0 ? new double [numChunks] : null
-        for (i in 0..<numChunks) {
-            memoryProbabilities[i] = 1.0/((double)numChunks)
-        }
-        this.memoryAvgReward = 0
-        numRuns = 0
-    }
 
-    public MemoryBandit(long minMem, long maxMem, int chunkSize, String taskName, double stepSize){
-        this.taskName = taskName
-        this.stepSizeMem = stepSize
-        this.minMem = minMem
-        this.maxMem = maxMem
-        this.chunkSize = chunkSize
-        this.numChunks = (maxMem - minMem) / chunkSize
-        this.memoryPreferences = new double[numChunks] // 0 to start
-        this.memoryProbabilities = new double[numChunks]
-        for (i in 0..<maxCpu) {
-            memoryProbabilities[i] = 1.0/((double) numChunks) // initial probability is the same
-        }
-        this.memoryAvgReward = 0
-        this.numRuns = 0
-    }
-
-    private void updateProbabilities(){
-        def s = 0
+        this.q = new double[numChunks][]
         for (i in 0..<numChunks) {
-            s += Math.exp(memoryPreferences[i])
-        }
-        for (i in 0..<numChunks) {
-            memoryProbabilities[i] = Math.exp(memoryPreferences[i]) / s
-        }
-    }
-
-    private void updatePreferences(long memIndex, float usage, int realtime){
-        def r = reward(cpus, usage, realtime)
-        log.info("Task \"$taskName\": memory alloc'd ${memIndex*chunkSize + minMem}, mem usage $usage, realtime $realtime -> reward $r\n")
-        for (i in 0..<numChunks) {
-            if (i == memIndex ){
-                memoryPreferences[i] = memoryPreferences[i] + stepSizeMem * (r - memoryAvgReward) * (1 - memoryPreferences[cpus - 1])
-            } else {
-                memoryPreferences[i] = memoryPreferences[i] - stepSizeMem * (r - memoryAvgReward) * (memoryPreferences[i])
+            q[i] = new double[numActions]
+            for (j in 0..<numActions){
+                q[i][j] = 0
             }
         }
-
+        this.visited = new boolean[numChunks][]
+        for (i in 0..<numChunks) {
+            visited[i] = new boolean[numActions]
+            for (j in 0..<numActions){
+                visited[i][j] = false
+            }
+        }
+        this.timesTried = new int[numChunks][]
+        for (i in 0..<numChunks) {
+            timesTried[i] = new int[numActions]
+            for (j in 0..<numActions){
+                timesTried[i][j] = 0
+            }
+        }
+        this.stepSize = stepSize
+        this.discount = discount
+        this.epsilon = epsilon
+        this.taskName = taskName
     }
+
+
+//    private void readPrevRewards() {
+//        // TODO
+//        log.info("Searching SQL for Bandit $taskName")
+//        def sql = new Sql(TaskDB.getDataSource())
+//        def searchSql = "SELECT cpus,cpu_usage, FROM taskrun WHERE task_name = (?)"
+//        sql.eachRow(searchSql,[taskName]) { row ->
+//            def cpus = (int) row.cpus
+//            def usage = (float) row.cpu_usage
+//            def realtime = (int) row.realtime
+//            log.info("Task \"$taskName\": prefs and probabilities BEFORE: $cpuPreferences , $cpuProbabilities")
+//            updatePreferences(cpus,usage,realtime)
+//            updateProbabilities()
+//            log.info("Task \"$taskName\": prefs and probabilities AFTER: $cpuPreferences , $cpuProbabilities")
+//        }
+//        sql.close()
+//        log.info("Done with SQL for Bandit $taskName")
+//    }
 
     private void readPrevRewards() {
         // TODO
         log.info("Searching SQL for Bandit $taskName")
         def sql = new Sql(TaskDB.getDataSource())
-        def searchSql = "SELECT cpus,cpu_usage,realtime FROM taskrun WHERE task_name = (?)"
+        def searchSql = "SELECT vmem, peak_vmem, rss, peak_rss, memory FROM taskrun WHERE task_name = (?) order by created_at"
         sql.eachRow(searchSql,[taskName]) { row ->
             def cpus = (int) row.cpus
             def usage = (float) row.cpu_usage
@@ -103,49 +109,29 @@ class MemoryBandit {
         log.info("Done with SQL for Bandit $taskName")
     }
 
-    int reward(int cpuCount, float usage, int realtime) {
-        // aim for 100% usage of the allocated cpus- overusage is treated as equally bad as underusage
-        // highest reward comes with precisely 100% cpu usage and minimal runtime
-        // reward is negative so we want to keep its absolute value small since we are using it with the exp() function
-        double r = -1 * realtime/60 * (1 + Math.abs(cpuCount - usage/100))
-//        double r = -1 * cpuCount * realtime
-        cpuAvgReward = (numRuns * cpuAvgReward + r)/(numRuns + 1)
-        numRuns++
-        return r
+    int reward(int cpu, float cpu_usage, long mem_usage, long rss, long peak_rss, long memAllocd) {
+        //TODO
     }
 
-    private int pickCpu(double rand){
-        int ret = 0
-        double pdf = 0
-        for (i in 0..<maxCpu) {
-            pdf += cpuProbabilities[i]
-            if (rand <= pdf){
-                return i*chunkSize + 1
-            }
-        }
-        log.error("$taskName Bandit couldnt pick a cpu, are the probabilities okay? ($cpuProbabilities) ... defaulting to 1 cpu")
-        return -1
-    }
+//    private int pickCpu(double rand){
+//        int ret = 0
+//        double pdf = 0
+//        for (i in 0..<maxCpu) {
+//            pdf += cpuProbabilities[i]
+//            if (rand <= pdf){
+//                return i*chunkSize + 1
+//            }
+//        }
+//        log.error("$taskName Bandit couldnt pick a cpu, are the probabilities okay? ($cpuProbabilities) ... defaulting to 1 cpu")
+//        return -1
+//    }
 
     void logBandit(){
-        def s = ""
-        s += "Bandit $taskName\n"
-        for (i in 0..<maxCpu) {
-            s += "Action ${i+1} cpus: Preference ${cpuPreferences[i]} Probability ${cpuProbabilities[i]}\n"
-        }
-        s += "$cpuAvgReward"
-        log.info(s)
-    }
 
-    public int allocateCpu(){
-        readPrevRewards()
-        updateCpuProbabilities()
-        logBandit()
-        return pickCpu(Math.random())
     }
 
     public int allocateMem(){
-        return 0
+        //TODO
     }
 
 }
