@@ -51,7 +51,7 @@ class GradientBandit {
             // reward is influenced the most by realtime and the tasks with realtimes larger than 5k tend to converge too fast
             // a task with avg realtime of 10k should therefore have a step size of 0.01 (assuming 0.1 is the 'normal' step size)
             def sql = new Sql(TaskDB.getDataSource())
-            def searchSql = "SELECT AVG(realtime) FROM taskrun WHERE task_name = (?)" // "and rl_active = false"
+            def searchSql = "SELECT AVG(duration) FROM taskrun WHERE task_name = (?)" // "and rl_active = false"
             sql.eachRow(searchSql,[taskName]) { row ->
                 if(row.avg && row.avg > 5000) {
                     //def modFactor = 1000 // we divide by 1000 because the bandit's reward function does too
@@ -108,9 +108,9 @@ class GradientBandit {
         }
     }
 
-    private void updateCpuPreferences(int cpus, float usage, int realtime){
-        def r = reward(cpus, usage, realtime)
-        logInfo("Task \"$taskName\": cpus alloc'd $cpus, cpu usage $usage, realtime $realtime -> reward $r (avg reward so far: $cpuAvgReward)\n")
+    private void updateCpuPreferences(int cpus, int duration){
+        def r = reward(duration)
+        logInfo("Task \"$taskName\": cpus alloc'd $cpus, duration $duration -> reward $r (avg reward so far: $cpuAvgReward)\n")
         for (i in 0..<maxCpu) {
             if (i == cpus - 1){
                 def oldval = cpuPreferences[i]
@@ -129,13 +129,12 @@ class GradientBandit {
     private void readPrevRewards() {
         logInfo("Searching SQL for Bandit $taskName")
         def sql = new Sql(TaskDB.getDataSource())
-        def searchSql = "SELECT cpus,cpu_usage,realtime FROM taskrun WHERE task_name = (?) and rl_active = true order by created_at"
+        def searchSql = "SELECT cpus,duration FROM taskrun WHERE task_name = (?) and rl_active = true order by created_at"
         sql.eachRow(searchSql,[taskName]) { row ->
             def cpus = (int) row.cpus
-            def usage = (float) row.cpu_usage
-            def realtime = (int) row.realtime
+            def duration = (int) row.duration
             logInfo("Task \"$taskName\": probabilities BEFORE: $cpuProbabilities")
-            updateCpuPreferences(cpus,usage,realtime)
+            updateCpuPreferences(cpus,duration)
             updateCpuProbabilities()
             logInfo("Task \"$taskName\": probabilities AFTER: $cpuProbabilities")
         }
@@ -143,8 +142,8 @@ class GradientBandit {
         logInfo("Done with SQL for Bandit $taskName")
     }
 
-    double reward(int cpuCount, float usage, int realtime) {
-        double r = -1 * (realtime/1000)
+    double reward(int duration) {
+        double r = -1 * (duration/1000)
         cpuAvgReward = (numRuns * cpuAvgReward + r)/(numRuns + 1)
         numRuns++
         return r
