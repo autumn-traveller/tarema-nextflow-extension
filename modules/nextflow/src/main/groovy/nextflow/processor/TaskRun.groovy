@@ -646,15 +646,15 @@ class TaskRun implements Cloneable {
 
         def config = this.getConfig()
         def sessionConfig = this.processor.getSession().config
-        def withLearning = sessionConfig.withLearning
-        boolean withLogs = sessionConfig.logRl
+        def withLearning = sessionConfig.withLearning as boolean
+        boolean withLogs = sessionConfig.logRl as boolean
         def maxcpus = sessionConfig.maxConfiguredCpus
 
 
         def taskName = (name != null) ? name : getName()
         if(taskName != null && withLearning ){
 //            log.warn("learning is active, enableing gradient bandit")
-            def action = new GradientBandit(maxcpus && maxcpus > 0 ? maxcpus : 8,taskName.split(" ")[0],withLogs)
+            def action = new GradientBandit((maxcpus && maxcpus as int > 0) ? maxcpus as int : 8 ,taskName.split(" ")[0],withLogs)
             def oldCpu = config.getCpus()
             def allocd = action.allocateCpu()
             if (allocd > 0){
