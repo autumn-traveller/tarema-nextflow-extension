@@ -14,6 +14,8 @@ class GradientBandit {
     double stepSizeCpu
     String taskName
     int numRuns
+    int lastTaskId
+    boolean tooShort = false
 
     public GradientBandit(int cpus, String taskName, double stepSize){
         this.taskName = taskName
@@ -26,6 +28,11 @@ class GradientBandit {
         }
         this.cpuAvgReward = 0
         this.numRuns = 0
+        this.lastTaskId = 0
+        this.enable_logs = withLogs
+        if(!this.checkTooShort()){
+            this.readPrevRewards()
+        }
     }
 
     public GradientBandit(int cpus, String taskName, boolean withLogs){
@@ -39,7 +46,27 @@ class GradientBandit {
         }
         this.cpuAvgReward = 0
         this.numRuns = 0
+        this.lastTaskId = 0
         this.enable_logs = withLogs
+        if(!this.checkTooShort()){
+            this.readPrevRewards()
+        }
+    }
+
+    private boolean checkTooShort(){
+        try{
+            def sql = new Sql(TaskDB.getDataSource())
+            def searchSql = "SELECT COUNT(realtime), AVG(realtime) FROM taskrun WHERE task_name = (?)" // "and rl_active = false"
+            sql.eachRow(searchSql,[taskName]) { row ->
+                if (row.count && row.count as int > 5 && row.avg && row.avg as int < 1000){
+                    tooShort = true // these tasks are too short for the nextflow metrics to be accurate so we ignore them
+                }
+            }
+            sql.close()
+        } catch (SQLException sqlException) {
+            log.info("There was an error: " + sqlException)
+        }
+        return this.tooShort
     }
 
     private void updateCpuProbabilities(){
@@ -81,10 +108,11 @@ class GradientBandit {
     private void readPrevRewards() {
         logInfo("Searching SQL for Bandit $taskName")
         def sql = new Sql(TaskDB.getDataSource())
-        def searchSql = "SELECT cpus,cpu_usage FROM taskrun WHERE task_name = (?) and rl_active = true"
-        sql.eachRow(searchSql,[taskName]) { row ->
-            def cpus = (int) row.cpus
-            def usage = (float) row.cpu_usage
+        def searchSql = "SELECT id,cpus,cpu_usage FROM taskrun WHERE task_name = (?) and rl_active = true and id > (?) order by created_at asc"
+        sql.eachRow(searchSql,[taskName,lastTaskId]) { row ->
+            this.lastTaskId = row.id as int
+            def cpus = row.cpus as int
+            def usage = row.cpu_usage as int
             logInfo("Task \"$taskName\": probabilities BEFORE: $cpuProbabilities")
             updateCpuPreferences(cpus,usage)
             updateCpuProbabilities()
@@ -124,7 +152,10 @@ class GradientBandit {
         logInfo(s)
     }
 
-    public int allocateCpu(){
+    public synchronized int allocateCpu(){
+        if(tooShort){
+            return -1
+        }
         readPrevRewards()
         //logBandit()
         return pickCpu(Math.random())
