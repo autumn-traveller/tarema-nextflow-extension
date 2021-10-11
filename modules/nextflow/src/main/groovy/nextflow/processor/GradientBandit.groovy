@@ -14,6 +14,8 @@ class GradientBandit {
     double stepSizeCpu
     String taskName
     int numRuns
+    int lastTaskId
+    boolean tooShort = false
 
     public GradientBandit(int cpus, String taskName, double stepSize){
         this.taskName = taskName
@@ -26,6 +28,9 @@ class GradientBandit {
         }
         this.cpuAvgReward = 0
         this.numRuns = 0
+        this.lastTaskId = 0
+        this.enable_logs = withLogs
+        this.readPrevRewards()
     }
 
     public GradientBandit(int cpus, String taskName, boolean withLogs){
@@ -39,7 +44,9 @@ class GradientBandit {
         }
         this.cpuAvgReward = 0
         this.numRuns = 0
+        this.lastTaskId = 0
         this.enable_logs = withLogs
+        this.readPrevRewards()
     }
 
     private double calculateStepSize(){
@@ -51,9 +58,9 @@ class GradientBandit {
             // reward is influenced the most by realtime and the tasks with realtimes larger than 5k tend to converge too fast
             // a task with avg realtime of 10k should therefore have a step size of 0.01 (assuming 0.1 is the 'normal' step size)
             def sql = new Sql(TaskDB.getDataSource())
-            def searchSql = "SELECT AVG(realtime) FROM taskrun WHERE task_name = (?)" // "and rl_active = false"
+            def searchSql = "SELECT COUNT(realtime), AVG(realtime) FROM taskrun WHERE task_name = (?)" // "and rl_active = false"
             sql.eachRow(searchSql,[taskName]) { row ->
-                if(row.avg && row.avg > 5000) {
+                if(row.avg && row.avg as int > 5000) {
                     //def modFactor = 1000 // we divide by 1000 because the bandit's reward function does too
                     def modFactor = 2000 // 1k was too small for the bandits between 5 and 10k
 
@@ -81,6 +88,8 @@ class GradientBandit {
                     }
 
                     stepSize = modFactor * 0.1 / row.avg
+                } else if (row.count && row.count as int > 5 && row.avg && row.avg as int < 1000){
+                    tooShort = true // these tasks are too short for the nextflow metrics to be accurate so we ignore them
                 }
             }
             sql.close()
@@ -129,11 +138,12 @@ class GradientBandit {
     private void readPrevRewards() {
         logInfo("Searching SQL for Bandit $taskName")
         def sql = new Sql(TaskDB.getDataSource())
-        def searchSql = "SELECT cpus,cpu_usage,realtime FROM taskrun WHERE task_name = (?) and rl_active = true order by created_at"
-        sql.eachRow(searchSql,[taskName]) { row ->
-            def cpus = (int) row.cpus
-            def usage = (float) row.cpu_usage
-            def realtime = (int) row.realtime
+        def searchSql = "SELECT id,cpus,cpu_usage,realtime FROM taskrun WHERE task_name = (?) and rl_active = true and id > (?) order by created_at asc"
+        sql.eachRow(searchSql,[taskName,lastTaskId]) { row ->
+            this.lastTaskId = row.id as int
+            def cpus = row.cpus as int
+            def usage = row.cpu_usage as int
+            def realtime = row.realtime as int
             logInfo("Task \"$taskName\": probabilities BEFORE: $cpuProbabilities")
             updateCpuPreferences(cpus,usage,realtime)
             updateCpuProbabilities()
@@ -178,7 +188,10 @@ class GradientBandit {
         logInfo(s)
     }
 
-    public int allocateCpu(){
+    public synchronized int allocateCpu(){
+        if(tooShort){
+            return -1
+        }
         readPrevRewards()
         //logBandit()
         return pickCpu(Math.random())
