@@ -142,7 +142,7 @@ class GradientBandit {
         sql.eachRow(searchSql,[taskName,lastTaskId]) { row ->
             this.lastTaskId = row.id as int
             def cpus = row.cpus as int
-            def usage = row.cpu_usage as int
+            def usage = row.cpu_usage as float
             def realtime = row.realtime as int
             logInfo("Task \"$taskName\": probabilities BEFORE: $cpuProbabilities")
             updateCpuPreferences(cpus,usage,realtime)
