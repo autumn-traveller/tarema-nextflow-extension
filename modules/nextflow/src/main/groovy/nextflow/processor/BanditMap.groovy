@@ -5,6 +5,7 @@ import groovy.util.logging.Slf4j
 @Slf4j
 @Singleton(lazy = true)
 class BanditMap {
+    //TODO: make this a map of the memory bandit!
     Map<String,GradientBandit> bandits = [:];
 
     synchronized GradientBandit getBandit(int cpus, String task_name, boolean withLogs){
