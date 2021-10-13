@@ -113,12 +113,12 @@ class GoogleLifeSciencesTaskHandler extends TaskHandler {
         return machineType
     }
 
-    protected String getMachineType0(String taskMachineType, int cpus, MemoryUnit memory) {
+    protected String getMachineType0(String taskMachineType, float cpus, MemoryUnit memory) {
 
         String machineType = taskMachineType
 
         if (machineType == null) {
-            long megabytes = memory != null ? memory.mega : cpus*1024
+            long megabytes = memory != null ? memory.mega : (long) cpus*1024
             machineType = 'custom-' + cpus + '-' + megabytes
         }
 

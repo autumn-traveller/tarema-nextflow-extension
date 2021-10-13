@@ -46,7 +46,7 @@ import java.util.List;
 @javax.annotation.Generated(value = "io.swagger.codegen.languages.JavaClientCodegen", date = "2018-02-01T15:43:49.638Z")
 public class TesResources {
   @SerializedName("cpu_cores")
-  private Long cpuCores = null;
+  private Float cpuCores = null;
 
   @SerializedName("preemptible")
   private Boolean preemptible = null;
@@ -60,7 +60,7 @@ public class TesResources {
   @SerializedName("zones")
   private List<String> zones = null;
 
-  public TesResources cpuCores(Long cpuCores) {
+  public TesResources cpuCores(Float cpuCores) {
     this.cpuCores = cpuCores;
     return this;
   }
@@ -70,11 +70,11 @@ public class TesResources {
    * @return cpuCores
   **/
   @ApiModelProperty(value = "Requested number of CPUs")
-  public Long getCpuCores() {
+  public Float getCpuCores() {
     return cpuCores;
   }
 
-  public void setCpuCores(Long cpuCores) {
+  public void setCpuCores(Float cpuCores) {
     this.cpuCores = cpuCores;
   }
 

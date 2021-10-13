@@ -47,11 +47,11 @@ class ProgressRecord implements Cloneable {
     boolean terminated
     boolean errored
 
-    int loadCpus
+    float loadCpus
     long loadMemory
 
     int peakRunning
-    int peakCpus
+    float peakCpus
     long peakMemory
 
     ProgressRecord() {}

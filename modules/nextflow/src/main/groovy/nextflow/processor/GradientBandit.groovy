@@ -37,7 +37,7 @@ class GradientBandit {
 
     public GradientBandit(int cpus, String taskName, boolean withLogs){
         this.taskName = taskName
-        this.maxCpu = cpus
+        this.maxCpu = cpus * 2 // use 0.5 cpus as increment
         this.stepSizeCpu = 0.01
         this.cpuPreferences = new double[maxCpu] // 0 to start
         this.cpuProbabilities = new double[maxCpu]
@@ -87,11 +87,11 @@ class GradientBandit {
         }
     }
 
-    private void updateCpuPreferences(int cpus, float usage){
+    private void updateCpuPreferences(float cpus, float usage){
         def r = reward(cpus, usage)
         logInfo("Task \"$taskName\": cpus alloc'd $cpus, cpu usage $usage-> reward $r (avg reward so far: $cpuAvgReward)\n")
         for (i in 0..<maxCpu) {
-            if (i == cpus - 1){
+            if (i == (cpus*2 - 1)){
                 def oldval = cpuPreferences[i]
                 cpuPreferences[i] = cpuPreferences[i] + stepSizeCpu * (r - cpuAvgReward) * (1 - cpuProbabilities[i])
                 logInfo("Task \"$taskName\": update (allocd cpus) preference: cpuPreferences[$i] = $oldval + $stepSizeCpu * ($r - $cpuAvgReward) * (1 - ${cpuProbabilities[i]}) = ${cpuPreferences[i]}\n")
@@ -111,8 +111,8 @@ class GradientBandit {
         def searchSql = "SELECT id,cpus,cpu_usage FROM taskrun WHERE task_name = (?) and rl_active = true and id > (?) order by created_at asc"
         sql.eachRow(searchSql,[taskName,lastTaskId]) { row ->
             this.lastTaskId = row.id as int
-            def cpus = row.cpus as int
-            def usage = row.cpu_usage as int
+            def cpus = row.cpus as float
+            def usage = row.cpu_usage as float
             logInfo("Task \"$taskName\": probabilities BEFORE: $cpuProbabilities")
             updateCpuPreferences(cpus,usage)
             updateCpuProbabilities()
@@ -122,20 +122,20 @@ class GradientBandit {
         logInfo("Done with SQL for Bandit $taskName")
     }
 
-    double reward(int cpuCount, float usage) {
-        double r = -1 * Math.abs(100 - usage/cpuCount)
+    double reward(float cpuCount, float usage) {
+        double r = -1 * Math.min(100.0,usage/cpuCount)
         cpuAvgReward = (numRuns * cpuAvgReward + r)/(numRuns + 1)
         numRuns++
         return r
     }
 
-    private int pickCpu(double rand){
+    private float pickCpu(double rand){
         int ret = 0
         double pdf = 0
         for (i in 0..<maxCpu) {
             pdf += cpuProbabilities[i]
             if (rand <= pdf){
-                return i + 1
+                return (i + 1) / 2
             }
         }
         log.error("$taskName Bandit couldnt pick a cpu, are the probabilities okay? ($cpuProbabilities) ... defaulting to 1 cpu")
@@ -146,13 +146,13 @@ class GradientBandit {
         def s = ""
         s += "Bandit $taskName\n"
         for (i in 0..<maxCpu) {
-            s += "Action ${i+1} cpus: Preference ${cpuPreferences[i]} Probability ${cpuProbabilities[i]}\n"
+            s += "Action ${i*2+1} cpus: Preference ${cpuPreferences[i]} Probability ${cpuProbabilities[i]}\n"
         }
         s += "$cpuAvgReward"
         logInfo(s)
     }
 
-    public synchronized int allocateCpu(){
+    public synchronized float allocateCpu(){
         if(tooShort){
             return -1
         }

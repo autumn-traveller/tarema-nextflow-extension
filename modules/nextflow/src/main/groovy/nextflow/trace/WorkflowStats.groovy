@@ -75,10 +75,10 @@ class WorkflowStats implements Cloneable {
     private int retriesCount
     private int abortedCount
 
-    private int loadCpus
+    private float loadCpus
     private long loadMemory
     private int peakRunning
-    private int peakCpus
+    private float peakCpus
     private long peakMemory
 
     WorkflowStats clone() {
@@ -95,6 +95,10 @@ class WorkflowStats implements Cloneable {
     }
 
     static private int gtz(int x) {
+        x >= 0 ? x : 0
+    }
+
+    static private float gtz(float x) {
         x >= 0 ? x : 0
     }
 
@@ -189,7 +193,7 @@ class WorkflowStats implements Cloneable {
 
     int getAbortedCount() { gtz(abortedCount) }
 
-    int getLoadCpus() { gtz(loadCpus) }
+    float getLoadCpus() { gtz(loadCpus) }
 
     long getLoadMemory() { gtz(loadMemory) }
 
@@ -197,7 +201,7 @@ class WorkflowStats implements Cloneable {
 
     int getPeakRunning() { gtz(peakRunning) }
 
-    long getPeakCpus() { gtz(peakCpus) }
+    float getPeakCpus() { gtz(peakCpus) }
 
     long getPeakMemory() { gtz(peakMemory) }
 
@@ -240,8 +244,8 @@ class WorkflowStats implements Cloneable {
      */
     protected long getCpuTime( TraceRecord record ) {
         final time = (long) (record.get('realtime') ?: 0)
-        final cpus = (int) (record.get('cpus') ?: 1)
-        return time * cpus
+        final cpus = (float) (record.get('cpus') ?: 1)
+        return (long) (time * cpus)
     }
 
     String toString() {
