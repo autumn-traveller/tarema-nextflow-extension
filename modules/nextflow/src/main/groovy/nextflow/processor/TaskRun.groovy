@@ -654,14 +654,12 @@ class TaskRun implements Cloneable {
         def taskName = (name != null) ? name : getName()
         if(taskName != null && withLearning ){
 //            log.warn("learning is active, enableing gradient bandit")
-            //TODO: maxMem as a parameter and config as an initial state
-            def action = AgentMap.instance.getBandit(config.getCpus(),(maxcpus && maxcpus as int > 0) ? maxcpus as int : 8,config.getMemory().toBytes(),taskName.split(" ")[0],withLogs)
+            def agent = AgentMap.instance.getBandit(config.getCpus(),(maxcpus && maxcpus as int > 0) ? maxcpus as int : 8,config.getMemory().toBytes(),taskName.split(" ")[0],withLogs)
             def oldCpu = config.getCpus()
-            def allocd = action.allocateCpu()
-            if (allocd > 0){
-                config.setProperty("cpus",allocd)
+            def oldMem = config.getMemory()
+            if (agent.takeAction(config)){
                 config.put("bandit","active")
-                log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was ${oldCpu}) memory = ${config.getMemory()} and time ${config.getTime()}")
+                log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was $oldCpu) memory = ${config.getMemory()} (oldConf was $oldMem)")
             } else {
                 config.put("bandit","inactive")
             }

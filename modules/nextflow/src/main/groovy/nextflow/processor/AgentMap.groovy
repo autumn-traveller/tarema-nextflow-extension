@@ -9,11 +9,11 @@ class AgentMap {
     Map<String,QAgent> bandits = [:];
 
     synchronized QAgent getBandit(int initialCpu, int maxCpu, long initialMem, String taskName, boolean withLogs){
-        QAgent b = bandits.get(task_name);
+        QAgent b = bandits.get(taskName);
 //        Date now = new Date()
         if (!b) {
-            b = new QAgent(initialCpu,maxCpu,initalMem,task_name,withLogs)
-            bandits.put(task_name,b)
+            b = new QAgent(initialCpu,maxCpu,initialMem,taskName,withLogs)
+            bandits.put(taskName,b)
 //            log.info("Creating new bandit: $b for $task_name at ${now.toString()}")
         } else {
 //            log.info("Found existing bandit: $b for $task_name at ${now.toString()}")
