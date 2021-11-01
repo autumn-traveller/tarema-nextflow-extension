@@ -65,9 +65,6 @@ class QAgent {
     final int DECR_CPU = 3
     final int INCR_CPU = 4
 
-    int prevAction
-    int action
-    State prevState
     State state
     StateActionData curData
     int maxStateMem
@@ -83,11 +80,14 @@ class QAgent {
     float stepSize
     float discount
     String taskName
+    String command
+    String workflow
     float epsilon
     int lastTaskId
     boolean tooShort = false
     boolean withLogs
     int count
+    long avgRealtime
 
     private void logInfo(String var1, Object... var2){
         if(withLogs){
@@ -101,11 +101,13 @@ class QAgent {
         return "${toMega(m)} MB"
     }
 
-    public QAgent(int initialCpu, int maxCpu, long initialMem, String taskName, boolean withLogs){
+    public QAgent(int initialCpu, int maxCpu, long initialMem, String taskName, String command, String workflow, boolean withLogs){
         this.withLogs = withLogs
         this.taskName = taskName
         this.count = 0
-        if(checkTooShort()){
+        this.command = command
+        this.workflow = workflow
+        if(checkTooShortAndGetModulator()){
             return
         }
 //        this.chunkSize = initialMem >> 2 // 5 possible memory states : -1/2 -1/4 0 +1/4 +1/2
@@ -117,7 +119,7 @@ class QAgent {
 //        this.minMem = initialMem - 2 * chunkSize
         this.minMem = initialMem - chunkSize
 
-
+	logInfo("agent config: withLogs $withLogs, command $command, initialCpu $initialCpu, initialMem ${memStr(initialMem)}")
         logInfo("Memory chunksize : ${memStr(chunkSize)} min: $minMem (${memStr(minMem)}) and max $maxMem (${memStr(maxMem)})}")
 
         // limit our initial state space based on the original config
@@ -126,21 +128,17 @@ class QAgent {
             this.maxCpu = 4
             this.cpuOptions = [1, 2, 4]
             this.currentCpuInd = 0
-        }
-        if(initialCpu == 2){
+        } else if(initialCpu == 2){
             this.minCpu = 1
             this.maxCpu = 6
             this.cpuOptions = [1, 2, 4, 6]
             this.currentCpuInd = 1
-        }
-        if(initialCpu > 2 && initialCpu < 7){
+        } else if(initialCpu > 2 && initialCpu < 7){
             this.minCpu = 2
             this.maxCpu = 8
             this.cpuOptions = [2, 4, 6, 8]
             this.currentCpuInd = 2
-        }
-
-        if(initialCpu > 7){
+        } else if(initialCpu > 7){
             this.minCpu = 6
             this.maxCpu = 14
             this.cpuOptions = [6, 10, 14]
@@ -150,9 +148,11 @@ class QAgent {
         this.maxStateCpus = this.cpuOptions.size()
         String str = ""
         for (m in 0..<maxStateMem){
-            str += "Mem option $m: ${memStr(initialMem + (m-2)*chunkSize)} "
+            str += "Mem option $m: ${memStr(initialMem + (m-1)*chunkSize)} "
+            //str += "Mem option $m: ${memStr(initialMem + (m-2)*chunkSize)} "
             for (int c : this.cpuOptions){
-                def s = new State((long)(initialMem + (m-2)*chunkSize),c)
+                def s = new State((long)(initialMem + (m-1)*chunkSize),c)
+                // def s = new State((long)(initialMem + (m-2)*chunkSize),c)
                 def d = new StateActionData(numActions)
                 states.put(s,d)
             }
@@ -160,12 +160,10 @@ class QAgent {
         logInfo(str)
         logInfo('ALL STATES',states)
 
-        this.prevState = null
-        this.prevAction = -1
         this.state = new State(initialMem,this.cpuOptions[currentCpuInd])
         this.curData = states.get(this.state)
         if(!this.curData){
-            log.error("Unable to find initial state in states map! (${this.cpuOptions[this.currentCpuInd]} cpus, $initialMem mem, statesmap = $states )")
+            log.error("Agent \"$taskName\" ($count): Unable to find initial state in states map! (${this.cpuOptions[this.currentCpuInd]} cpus, $initialMem mem, statesmap = $states )")
             throw new Error("Undefined state")
         }
 
@@ -181,46 +179,71 @@ class QAgent {
     private void readPrevRewards() {
         logInfo("Starting SQL for Agent")
         def sql = new Sql(TaskDB.getDataSource())
-        def searchSql = "SELECT id,cpus,cpu_usage,realtime,memory,mem_usage FROM taskrun WHERE task_name = (?) and rl_active = true and id > (?) order by created_at asc"
-        sql.eachRow(searchSql,[taskName,lastTaskId]) { row ->
+        def searchSql = "SELECT taskrun.id,cpus,cpu_usage,realtime,memory,peak_rss,taskrun.duration FROM taskrun LEFT JOIN runs ON taskrun.run_name = runs.run_name WHERE task_name = (?) and taskrun.rl_active = true and taskrun.id > (?) and (command = (?) or taskrun.run_name = (?)) ORDER BY created_at asc"
+        sql.eachRow(searchSql,[taskName,lastTaskId,command,workflow]) { row ->
             this.lastTaskId = (int) row.id
             def cpus = (int) row.cpus
             def cpu_usage = (float) row.cpu_usage
             def realtime = (long) row.realtime
-            def mem_usage = (float) row.mem_usage
+            def rss =  (long) row.peak_rss
             def mem = (long) row.memory
-            def r = reward(cpus,cpu_usage,realtime,mem_usage,mem)
+            double mem_usage = ((double) rss)/((double) mem)
+            def actionTaken = (int) row.duration // dirty hack to store actions for now
+            def r = reward(cpus,cpu_usage,realtime,mem_usage,mem,rss)
 
-            logInfo("cpus $cpus usage $cpu_usage mem ${memStr(mem)} mem_usage $mem_usage -> reward $r")
-
-            if(cpus != this.state.c){
-                prevAction = cpus > this.state.c ? INCR_CPU : DECR_CPU
-                logInfo("Prev Action was $prevAction, we were in ${this.state}")
-            } else if (mem != this.state.m){
-                prevAction = mem > this.state.m ? INCR_MEM : DECR_MEM
-                logInfo("Prev Action was $prevAction, we were in ${this.state}")
-            } else {
-                logInfo("Prev Action was NOOP, we were in ${this.state}")
-                prevAction = NOOP
-            }
+            logInfo("cpus $cpus, usage $cpu_usage, time ${realtime/1000} seconds, avg time is ${avgRealtime/1000} seconds (${1-realtime/avgRealtime} speedup) ,mem ${memStr(mem)}, rss ${memStr(rss)} (mem_usage ${mem_usage*100}%) -> reward $r")
 
             def newState = new State(mem,cpus)
             def newData = states.get(newState)
-            logInfo("Now we are in ${newState}")
             if(!newData){
-                log.error("Unable to find state (c: $cpus m: ${memStr(mem)} in states map")
+                log.error("Agent \"$taskName\" ($count): Unable to find data for state $newState in states map: prevState = $state")
                 throw new Error("Undefined state")
             }
-            def qOld = curData.q[prevAction]
-            double newQMax = Collections.max(newData.q as Collection<? extends Double>)
-//            log.warn("maxdafuq: ${newData.q} , ${newData.q.max()} ")
-            curData.q[prevAction] = qOld + stepSize * (r + discount * newQMax - qOld)
-            logInfo("Old q = $qOld , New q = $qOld + $stepSize * ($r + $discount * $newQMax - $qOld = ${curData.q[prevAction]}")
 
-            curData.timesTried[prevAction]++
-            curData.visited[prevAction] = true
+            State prevState
+            int cpuInd = this.cpuOptions.findIndexOf({ it == cpus })
+            if(cpuInd == -1){
+                log.error("Agent \"$taskName\" ($count): couldnt find cpu allocation $cpus in ${this.cpuOptions}")
+                throw new Error("Undefined state")
+            }
+            switch(actionTaken){
+                case NOOP:
+                    prevState = new State(mem,cpus)
+                    break;
+                case INCR_MEM:
+                    prevState = new State(mem-chunkSize,cpus)
+                    break;
+                case DECR_MEM:
+                    prevState = new State(mem+chunkSize,cpus)
+                    break;
+                case INCR_CPU:
+                    prevState = new State(mem,this.cpuOptions[cpuInd-1])
+                    break;
+                case DECR_CPU:
+                    prevState = new State(mem,this.cpuOptions[cpuInd+1])
+                    break;
+                default:
+                    log.error("Agent \"$taskName\" ($count): Bad action in DB $actionTaken")
+                    throw new Error("Undefined state")
+                    break;
+            }
+
+            logInfo("Prev Action was $actionTaken, we were in $prevState and are now in $newState")
+
+            def prevData = states.get(prevState)
+
+            def qOld = prevData.q[actionTaken]
+
+            double newQMax = Collections.max(newData.q as Collection<? extends Double>)
+            logInfo("qMax is $newQMax over ${newData.q} (alt max func ${(maxDouble(newData.q))})")
+            prevData.q[actionTaken] = qOld + stepSize * (r + discount * newQMax - qOld)
+            logInfo("Old q = $qOld , New q = $qOld + $stepSize * ($r + $discount * $newQMax - $qOld) = ${prevData.q[actionTaken]}")
+
+            prevData.timesTried[actionTaken]++
+            prevData.visited[actionTaken] = true
 
             this.state = newState
+            this.currentCpuInd = cpuInd
             this.curData = newData
 
             if(++count > 25){
@@ -236,14 +259,26 @@ class QAgent {
         logInfo("Done with SQL for Agent")
     }
 
-    float reward(int cpus, float cpu_usage, long realtime, float mem_usage, long memAllocd) {
+    float reward(int cpus, float cpu_usage, long realtime, double mem_usage, long memAllocd, long rss) {
         //TODO: try another function?
 //        return cpus*5 + Math.min(90f,cpu_usage/cpus) + Math.min(65f,mem_usage) // maximized when resource usage is high
-        return cpus*5 + Math.min(90f,cpu_usage/cpus) + Math.min(65f,10*mem_usage) // increase mem reward for testing with low usage workflows
+        // return cpus*5 + Math.min(90f,cpu_usage/cpus) + Math.min(65f,10*mem_usage) // increase mem reward for testing with low usage workflows
+        // return -1 * Math.sqrt(Math.abs(cpus - cpu_usage/cpus)) * realtime/modulator * ((memAllocd >> 20) * (1-mem_usage))
+        return Math.min(85.0,cpu_usage/cpus) + 100*(1 - realtime/avgRealtime) + Math.min(70.0,mem_usage*100) // cpu use + speedup + mem use with caps
     }
 
     void logBandit(){
 
+    }
+
+    private double maxDouble(double[] q){
+        double x = Double.MIN_VALUE
+        for(double d : q){
+            if (d > x){
+                x = d
+            }
+        }
+        return x
     }
 
     boolean actionAllowed(int a){
@@ -253,10 +288,10 @@ class QAgent {
         if(a == INCR_CPU && state.c == maxCpu){
             return false
         }
-        if(a == DECR_MEM && state.c == minMem){
+        if(a == DECR_MEM && state.m == minMem){
             return false
         }
-        if(a == INCR_MEM && state.c == maxMem){
+        if(a == INCR_MEM && state.m == maxMem){
             return false
         }
         return a >= 0 && a < numActions
@@ -273,14 +308,13 @@ class QAgent {
             return action
         }
 
-        double x = 0
+        double x = Double.MIN_VALUE
         int aMax = 0
         for (a in 0..<numActions){
             if(!actionAllowed(a)){
                 continue
             }
             if(!curData.visited[a]){
-                curData.visited[a] = true
                 return a
             }
             if(curData.q[a] > x){
@@ -293,13 +327,14 @@ class QAgent {
     }
 
     public synchronized boolean takeAction(TaskConfig config){
-        //TODO if too short...
         if(tooShort) {
             return false
         }
         readPrevRewards()
-        action = this.takeNewAction()
+        def action = this.takeNewAction()
         long mem = this.state.m
+        int c = currentCpuInd
+        logInfo("Proposed action is $action for state $state and cpuInd $currentCpuInd")
         switch(action){
             case NOOP:
                 break
@@ -310,38 +345,46 @@ class QAgent {
                 mem += chunkSize
                 break
             case DECR_CPU:
-                this.currentCpuInd -= 1
+                c -= 1
                 break
             case INCR_CPU:
-                this.currentCpuInd += 1
+                c += 1
                 break
             default:
-                log.error("invalid action picked: $action")
+                log.error("Agent \"$taskName\" ($count): invalid action picked: $action in state $state")
                 return false
         }
-        int cpus = this.cpuOptions[this.currentCpuInd]
+        int cpus = cpuOptions[c]
         if(mem < minMem || mem > maxMem ){
-            log.error("Invalid value for mem: ${memStr(mem)} (chunk size is ${memStr(chunkSize)}) and minMem is ${memStr(minMem)}")
+            log.error("Agent \"$taskName\" ($count): Invalid value chosen for mem: ${memStr(mem)} (chunk size is ${memStr(chunkSize)}) and min is ${memStr(minMem)} and max is ${memStr(maxMem)} action was/is $action in state $state")
             return false
         }
-        if(cpus <= 0 || cpus > maxCpu){
-            log.error("Invalid value for cpus: $cpus (max cpus is $maxCpu)")
+        if(cpus <= 0 || cpus < minCpu || cpus > maxCpu){
+            log.error("Agent \"$taskName\" ($count): Invalid value chosen for cpus: $cpus (min cpus is $minCpu and max is $maxCpu) action was/is $action in state $state")
             return false
         }
         config.put('memory', new MemoryUnit(mem))
         config.put('cpus',cpus)
+        config.put('action',action)
         logInfo("New config: $cpus cpus and ${memStr(mem)} mem")
+        this.currentCpuInd = c
+        this.curData.visited[action] = true
+        this.state = new State(mem,cpus)
         return true
     }
 
-    boolean checkTooShort(){
+    boolean checkTooShortAndGetModulator(){
         try{
             def sql = new Sql(TaskDB.getDataSource())
             def searchSql = "SELECT COUNT(realtime), AVG(realtime) FROM taskrun WHERE task_name = (?)" // "and rl_active = false"
             sql.eachRow(searchSql,[taskName]) { row ->
-               if (row.count && row.count as int >= 5 && row.avg && row.avg as int < 1000){
-                    tooShort = true // these tasks are too short for the nextflow metrics to be accurate so we ignore them
-                }
+               if (row.count && row.count as int >= 5){
+                    if(row.avg && row.avg as int < 1000){
+                        tooShort = true // these tasks are too short for the nextflow metrics to be accurate so we ignore them
+                    } else if(row.avg){
+                        avgRealtime = row.avg
+                    }
+               }
             }
             sql.close()
         } catch (SQLException sqlException) {
