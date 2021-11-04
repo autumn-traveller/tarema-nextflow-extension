@@ -169,7 +169,7 @@ class QAgent {
 
         //TODO what should most of these be?
         this.discount = 1
-        this.stepSize = 0.25
+        this.stepSize = 0.1
         this.epsilon = 0.5 // decrease epsilon over time
 
         this.lastTaskId = 0
@@ -191,7 +191,7 @@ class QAgent {
             def actionTaken = (int) row.duration // dirty hack to store actions for now
             def r = reward(cpus,cpu_usage,realtime,mem_usage,mem,rss)
 
-            logInfo("cpus $cpus, usage $cpu_usage, time ${realtime/1000} seconds, avg time is ${avgRealtime/1000} seconds (${1-realtime/avgRealtime} speedup) ,mem ${memStr(mem)}, rss ${memStr(rss)} (mem_usage ${mem_usage*100}%) -> reward $r")
+            logInfo("cpus $cpus, usage $cpu_usage, time ${realtime/1000} seconds, avg time is ${avgRealtime/1000} seconds (${1-realtime/avgRealtime} speedup), mem ${memStr(mem)}, rss ${memStr(rss)} (mem_usage ${mem_usage*100}%) -> reward $r")
 
             def newState = new State(mem,cpus)
             def newData = states.get(newState)
@@ -235,9 +235,9 @@ class QAgent {
             def qOld = prevData.q[actionTaken]
 
             double newQMax = Collections.max(newData.q as Collection<? extends Double>)
-            logInfo("qMax is $newQMax over ${newData.q} (alt max func ${(maxDouble(newData.q))})")
+            logInfo("qMax for ${newState} is $newQMax over ${newData.q}")
             prevData.q[actionTaken] = qOld + stepSize * (r + discount * newQMax - qOld)
-            logInfo("Old q = $qOld , New q = $qOld + $stepSize * ($r + $discount * $newQMax - $qOld) = ${prevData.q[actionTaken]}")
+            logInfo("Old q for ${prevState} = $qOld , New q = $qOld + $stepSize * ($r + $discount * $newQMax - $qOld) = ${prevData.q[actionTaken]}")
 
             prevData.timesTried[actionTaken]++
             prevData.visited[actionTaken] = true
@@ -246,9 +246,9 @@ class QAgent {
             this.currentCpuInd = cpuInd
             this.curData = newData
 
-            if(++count > 25){
+            if(++count > 50){
                 epsilon = 0.25
-            } else if(count > 75){
+            } else if(count > 100){
                 epsilon = 0.1
             } else if (count > 150){
                 epsilon = 0.02
@@ -262,36 +262,30 @@ class QAgent {
     float reward(int cpus, float cpu_usage, long realtime, double mem_usage, long memAllocd, long rss) {
         //TODO: try another function?
 //        return cpus*5 + Math.min(90f,cpu_usage/cpus) + Math.min(65f,mem_usage) // maximized when resource usage is high
-        // return cpus*5 + Math.min(90f,cpu_usage/cpus) + Math.min(65f,10*mem_usage) // increase mem reward for testing with low usage workflows
         // return -1 * Math.sqrt(Math.abs(cpus - cpu_usage/cpus)) * realtime/modulator * ((memAllocd >> 20) * (1-mem_usage))
-        return Math.min(85.0,cpu_usage/cpus) + 100*(1 - realtime/avgRealtime) + Math.min(70.0,mem_usage*100) // cpu use + speedup + mem use with caps
+//        return Math.min(85.0,cpu_usage/cpus) + 100*(1 - realtime/avgRealtime) + Math.min(70.0,mem_usage*100) // cpu use + speedup + mem use with caps
+        return -1 * Math.max(0.1,cpu_usage/(cpus*100)) * realtime/avgRealtime * ((memAllocd >> 20) * (Math.abs(0.65-mem_usage))) // -1 * unused cpus *  speedup factor * mis-allocated mem
     }
 
     void logBandit(){
 
     }
 
-    private double maxDouble(double[] q){
-        double x = Double.MIN_VALUE
-        for(double d : q){
-            if (d > x){
-                x = d
-            }
-        }
-        return x
-    }
-
     boolean actionAllowed(int a){
         if(a == DECR_CPU && state.c == minCpu){
+            curData.q[a] = Double.NEGATIVE_INFINITY // dont accidentally pick this action as qMax
             return false
         }
         if(a == INCR_CPU && state.c == maxCpu){
+            curData.q[a] = Double.NEGATIVE_INFINITY
             return false
         }
         if(a == DECR_MEM && state.m == minMem){
+            curData.q[a] = Double.NEGATIVE_INFINITY
             return false
         }
         if(a == INCR_MEM && state.m == maxMem){
+            curData.q[a] = Double.NEGATIVE_INFINITY
             return false
         }
         return a >= 0 && a < numActions
@@ -308,7 +302,7 @@ class QAgent {
             return action
         }
 
-        double x = Double.MIN_VALUE
+        double x = Double.NEGATIVE_INFINITY
         int aMax = 0
         for (a in 0..<numActions){
             if(!actionAllowed(a)){
