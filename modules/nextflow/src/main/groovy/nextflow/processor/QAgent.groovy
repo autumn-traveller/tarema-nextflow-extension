@@ -264,7 +264,7 @@ class QAgent {
 //        return cpus*5 + Math.min(90f,cpu_usage/cpus) + Math.min(65f,mem_usage) // maximized when resource usage is high
         // return -1 * Math.sqrt(Math.abs(cpus - cpu_usage/cpus)) * realtime/modulator * ((memAllocd >> 20) * (1-mem_usage))
 //        return Math.min(85.0,cpu_usage/cpus) + 100*(1 - realtime/avgRealtime) + Math.min(70.0,mem_usage*100) // cpu use + speedup + mem use with caps
-        return -1 * Math.max(0.1,cpu_usage/(cpus*100)) * realtime/avgRealtime * ((memAllocd >> 20) * (Math.abs(0.65-mem_usage))) // -1 * unused cpus *  speedup factor * mis-allocated mem
+        return -1 * Math.max(0.1,cpus-cpu_usage/100) * realtime/avgRealtime * ((memAllocd >> 20) * (1 - Math.max(0.75,mem_usage))) // -1 * unused cpus *  speedup factor * mis-allocated mem
     }
 
     void logBandit(){
@@ -368,16 +368,14 @@ class QAgent {
     }
 
     boolean checkTooShortAndGetModulator(){
+        tooShort = true
         try{
             def sql = new Sql(TaskDB.getDataSource())
             def searchSql = "SELECT COUNT(realtime), AVG(realtime) FROM taskrun WHERE task_name = (?)" // "and rl_active = false"
             sql.eachRow(searchSql,[taskName]) { row ->
-               if (row.count && row.count as int >= 5){
-                    if(row.avg && row.avg as int < 1000){
-                        tooShort = true // these tasks are too short for the nextflow metrics to be accurate so we ignore them
-                    } else if(row.avg){
-                        avgRealtime = row.avg
-                    }
+               if (row.count && row.count as int >= 5 && row.avg && row.avg as int > 1000){
+                   avgRealtime = row.avg
+                   tooShort = false // these tasks are long enough for the nextflow metrics to be accurate
                }
             }
             sql.close()
