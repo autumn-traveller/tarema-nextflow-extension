@@ -81,7 +81,7 @@ class QAgent {
     float discount
     String taskName
     String command
-    String workflow
+    String runName
     float epsilon
     int lastTaskId
     boolean tooShort = false
@@ -95,18 +95,24 @@ class QAgent {
         }
     }
 
+    private void logError(String var1, Object... var2){
+        def f = new File("errlog")
+        f.append("WF $command, Run name $runName, Agent \"$taskName\" ($count): $var1\n")
+        log.error("Agent \"$taskName\" ($count): $var1",var2)
+    }
+
     private static long toMega(m) { m >> 20 }
 
     private static String memStr(long m){
         return "${toMega(m)} MB"
     }
 
-    public QAgent(int initialCpu, int maxCpu, long initialMem, String taskName, String command, String workflow, boolean withLogs){
+    public QAgent(int initialCpu, int maxCpu, long initialMem, String taskName, String command, String runName, boolean withLogs){
         this.withLogs = withLogs
         this.taskName = taskName
         this.count = 0
         this.command = command
-        this.workflow = workflow
+        this.runName = runName
         if(checkTooShortAndGetModulator()){
             return
         }
@@ -163,7 +169,7 @@ class QAgent {
         this.state = new State(initialMem,this.cpuOptions[currentCpuInd])
         this.curData = states.get(this.state)
         if(!this.curData){
-            log.error("Agent \"$taskName\" ($count): Unable to find initial state in states map! (${this.cpuOptions[this.currentCpuInd]} cpus, $initialMem mem, statesmap = $states )")
+            logError("Unable to find initial state in states map! (${this.cpuOptions[this.currentCpuInd]} cpus, $initialMem mem, statesmap = $states )")
             throw new Error("Undefined state")
         }
 
@@ -180,7 +186,7 @@ class QAgent {
         logInfo("Starting SQL for Agent")
         def sql = new Sql(TaskDB.getDataSource())
         def searchSql = "SELECT taskrun.id,cpus,cpu_usage,realtime,memory,peak_rss,taskrun.duration FROM taskrun LEFT JOIN runs ON taskrun.run_name = runs.run_name WHERE task_name = (?) and taskrun.rl_active = true and taskrun.id > (?) and (command = (?) or taskrun.run_name = (?)) ORDER BY created_at asc"
-        sql.eachRow(searchSql,[taskName,lastTaskId,command,workflow]) { row ->
+        sql.eachRow(searchSql,[taskName, lastTaskId, command, runName]) { row ->
             this.lastTaskId = (int) row.id
             def cpus = (int) row.cpus
             def cpu_usage = (float) row.cpu_usage
@@ -196,14 +202,14 @@ class QAgent {
             def newState = new State(mem,cpus)
             def newData = states.get(newState)
             if(!newData){
-                log.error("Agent \"$taskName\" ($count): Unable to find data for state $newState in states map: prevState = $state")
+                logError("Unable to find data for state $newState in states map: prevState = $state")
                 throw new Error("Undefined state")
             }
 
             State prevState
             int cpuInd = this.cpuOptions.findIndexOf({ it == cpus })
             if(cpuInd == -1){
-                log.error("Agent \"$taskName\" ($count): couldnt find cpu allocation $cpus in ${this.cpuOptions}")
+                logError("couldnt find cpu allocation $cpus in ${this.cpuOptions}")
                 throw new Error("Undefined state")
             }
             switch(actionTaken){
@@ -223,7 +229,7 @@ class QAgent {
                     prevState = new State(mem,this.cpuOptions[cpuInd+1])
                     break;
                 default:
-                    log.error("Agent \"$taskName\" ($count): Bad action in DB $actionTaken")
+                    logError("Bad action in DB $actionTaken")
                     throw new Error("Undefined state")
                     break;
             }
@@ -345,16 +351,16 @@ class QAgent {
                 c += 1
                 break
             default:
-                log.error("Agent \"$taskName\" ($count): invalid action picked: $action in state $state")
+                logError("invalid action picked: $action in state $state")
                 return false
         }
         int cpus = cpuOptions[c]
         if(mem < minMem || mem > maxMem ){
-            log.error("Agent \"$taskName\" ($count): Invalid value chosen for mem: ${memStr(mem)} (chunk size is ${memStr(chunkSize)}) and min is ${memStr(minMem)} and max is ${memStr(maxMem)} action was/is $action in state $state")
+            logError("Invalid value chosen for mem: ${memStr(mem)} (chunk size is ${memStr(chunkSize)}) and min is ${memStr(minMem)} and max is ${memStr(maxMem)} action was/is $action in state $state")
             return false
         }
         if(cpus <= 0 || cpus < minCpu || cpus > maxCpu){
-            log.error("Agent \"$taskName\" ($count): Invalid value chosen for cpus: $cpus (min cpus is $minCpu and max is $maxCpu) action was/is $action in state $state")
+            logError("Invalid value chosen for cpus: $cpus (min cpus is $minCpu and max is $maxCpu) action was/is $action in state $state")
             return false
         }
         config.put('memory', new MemoryUnit(mem))
