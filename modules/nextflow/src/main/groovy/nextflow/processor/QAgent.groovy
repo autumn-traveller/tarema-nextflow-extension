@@ -107,7 +107,7 @@ class QAgent {
         return "${toMega(m)} MB"
     }
 
-    public QAgent(int initialCpu, int maxCpu, long initialMem, String taskName, String command, String runName, boolean withLogs){
+    public QAgent(int initialCpu, int maxCpu, long initialMem, long maxSystemMem, String taskName, String command, String runName, boolean withLogs){
         this.withLogs = withLogs
         this.taskName = taskName
         this.count = 0
@@ -116,14 +116,23 @@ class QAgent {
         if(checkTooShortAndGetModulator()){
             return
         }
+
+        if(initialMem + initialMem/2 >= maxSystemMem){
+            this.chunkSize = initialMem >> 2 // 3 possible memory states : -1/2 -1/4 0
+            this.maxStateMem = 3
+            this.maxMem = initialMem
+            this.minMem = initialMem - 2*chunkSize
+            initialMem -= chunkSize // start in the middle state (-1/4)
+        } else {
 //        this.chunkSize = initialMem >> 2 // 5 possible memory states : -1/2 -1/4 0 +1/4 +1/2
-        this.chunkSize = initialMem >> 1 // 3 possible memory states : -1/2 0 +1/2
+            this.chunkSize = initialMem >> 1 // 3 possible memory states : -1/2 0 +1/2
 //        this.maxStateMem = 5
-        this.maxStateMem = 3
+            this.maxStateMem = 3
 //        this.maxMem = initialMem + 2 * chunkSize
-        this.maxMem = initialMem + chunkSize
+            this.maxMem = initialMem + chunkSize
 //        this.minMem = initialMem - 2 * chunkSize
-        this.minMem = initialMem - chunkSize
+            this.minMem = initialMem - chunkSize
+        }
 
 	logInfo("agent config: withLogs $withLogs, command $command, initialCpu $initialCpu, initialMem ${memStr(initialMem)}")
         logInfo("Memory chunksize : ${memStr(chunkSize)} min: $minMem (${memStr(minMem)}) and max $maxMem (${memStr(maxMem)})}")
@@ -136,18 +145,28 @@ class QAgent {
             this.currentCpuInd = 0
         } else if(initialCpu == 2){
             this.minCpu = 1
-            this.maxCpu = 6
-            this.cpuOptions = [1, 2, 4, 6]
+            this.maxCpu = 4
+            this.cpuOptions = [1, 2, 4]
             this.currentCpuInd = 1
-        } else if(initialCpu > 2 && initialCpu < 7){
+        } else if(initialCpu <= 4){
+            this.minCpu = 2
+            this.maxCpu = 8
+            this.cpuOptions = [2, 4, 6, 8]
+            this.currentCpuInd = 1
+        } else if(initialCpu <= 6){
             this.minCpu = 2
             this.maxCpu = 8
             this.cpuOptions = [2, 4, 6, 8]
             this.currentCpuInd = 2
-        } else if(initialCpu > 7){
-            this.minCpu = 6
-            this.maxCpu = 14
-            this.cpuOptions = [6, 10, 14]
+        } else if(initialCpu <= 8){
+            this.minCpu = 4
+            this.maxCpu = 10
+            this.cpuOptions = [4, 6, 8, 10]
+            this.currentCpuInd = 2
+        } else if(initialCpu > 8){
+            this.minCpu = 8
+            this.maxCpu = 16
+            this.cpuOptions = [8, 12, 16]
             this.currentCpuInd = 1
         }
 

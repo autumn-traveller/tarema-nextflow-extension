@@ -656,7 +656,7 @@ class TaskRun implements Cloneable {
         def taskName = (name != null) ? name : getName()
         if(taskName != null && withLearning ){
 //            log.warn("learning is active, enableing gradient bandit")
-            def agent = AgentMap.instance.getBandit(config.getCpus(),(maxcpus && maxcpus as int > 0) ? maxcpus as int : 8,config.getMemory().toBytes(),taskName.split(" ")[0],cmd,session.runName,withLogs)
+            def agent = AgentMap.instance.getBandit(config.getCpus(),(maxcpus && maxcpus as int > 0) ? maxcpus as int : 8,config.getMemory().toBytes(),125 << 30,taskName.split(" ")[0],cmd,session.runName,withLogs)
             def oldCpu = config.getCpus()
             def oldMem = config.getMemory()
             if (agent.takeAction(config)){
