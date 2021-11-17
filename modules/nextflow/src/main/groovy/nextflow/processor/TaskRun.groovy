@@ -27,6 +27,7 @@ import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
 import nextflow.Session
 import nextflow.cli.CmdRun
+import nextflow.util.MemoryUnit
 import nextflow.TaskDB
 import nextflow.conda.CondaCache
 import nextflow.conda.CondaConfig
@@ -667,6 +668,9 @@ class TaskRun implements Cloneable {
             }
         } else if(!withLearning){
 //            log.warn("vanilla mode, not using gradient bandit")
+	    config.put("cpus",32)
+            long mem = 124000000000 // 124 GB (maximum possible RAM)
+            config.put('memory', new MemoryUnit(mem))
             config.put("vanilla","active")
         }
 
