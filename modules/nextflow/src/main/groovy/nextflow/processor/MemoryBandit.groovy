@@ -41,7 +41,7 @@ class MemoryBandit {
     public MemoryBandit(long minMem, long maxMem, long currentMem, String taskName, boolean withLogs){
         this.taskName = taskName
         this.withLogs = withLogs
-        this.stepSize = 0.1 // perhaps 0.2 ?
+        this.stepSize = 0.1 // perhaps 0.2 or 0.05?
         this.minMem = minMem
         this.maxMem = maxMem
         this.numChunks = 10 // possible allocations are 0.125 up to 1.25 times the default config
@@ -52,9 +52,9 @@ class MemoryBandit {
         if(10*chunkSize >= maxMem){
             numChunks = 8
         }
-//        if(checkTooShort()){
-//            return
-//        }
+        if(checkTooShort()){
+            return
+        }
         this.memoryPreferences = new double[numChunks] // 0 to start
         this.memoryProbabilities = new double[numChunks]
         for (i in 0..<numChunks) {
