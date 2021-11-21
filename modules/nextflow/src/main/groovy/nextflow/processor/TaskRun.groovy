@@ -17,6 +17,8 @@
 
 package nextflow.processor
 
+import nextflow.util.MemoryUnit
+
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
@@ -650,18 +652,22 @@ class TaskRun implements Cloneable {
         boolean withLogs = sessionConfig.logRl as boolean
         def maxcpus = sessionConfig.maxConfiguredCpus
 
-
         def taskName = (name != null) ? name : getName()
         if(taskName != null && withLearning ){
 //            log.warn("learning is active, enableing gradient bandit")
-            def action = BanditMap.instance.getBandit((maxcpus && maxcpus as int > 0) ? maxcpus as int : 8 ,taskName.split(" ")[0],withLogs)
+            def cpuAction = BanditMap.instance.getBandit((maxcpus && maxcpus as int > 0) ? maxcpus as int : 8 ,taskName.split(" ")[0],withLogs)
+            def memAction = MemBanditMap.instance.getBandit((7 << 20),(125 << 30),config.getMemory().toBytes(),taskName.split(" ")[0],withLogs)
             def oldCpu = config.getCpus()
-            def allocd = action.allocateCpu()
-            if (allocd > 0){
-                config.setProperty("cpus",allocd)
+            def oldMem = config.getMemory()
+            def allocdCpus = cpuAction.allocateCpu()
+            def allocdMem = memAction.allocateMem(this.failCount as int,this.runType,config.getMemory().toBytes())
+            if (allocdCpus > 0){
+                config.setProperty("cpus",allocdCpus)
+                config.setProperty("memory",new MemoryUnit(allocdMem))
                 config.put("bandit","active")
-                log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was ${oldCpu}) memory = ${config.getMemory()} and time ${config.getTime()}")
+                log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was ${oldCpu}) memory = ${config.getMemory().toMega()} MB (oldoconfg was ${oldMem.toMega()} MB)")
             } else {
+                config.setProperty("memory",new MemoryUnit(allocdMem)) // always safe
                 config.put("bandit","inactive")
             }
         } else if(!withLearning){
