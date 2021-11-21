@@ -956,10 +956,13 @@ class TaskProcessor {
      */
     @PackageScope
     final synchronized resumeOrDie( TaskRun task, Throwable error ) {
-        log.trace "Handling unexpected condition for\n  task: $task\n  error [${error?.class?.name}]: ${error?.getMessage()?:error}"
+        log.trace "Handling unexpected condition for\n  task: $task\n  error [${error?.class?.name}]: ${error?.getMessage() ?: error}"
 
         ErrorStrategy errorStrategy = TERMINATE
         final message = []
+        if (task && task.config){
+            log.warn("faild task $task (max retries ${task.config.getMaxRetries()}) and (errorStrat: ${task.config.getErrorStrategy()}) and max errors ${task.config.getMaxErrors()} with ${task.config.getErrorCount()} errors so far)")
+        }
         try {
             // -- do not recoverable error, just re-throw it
             if( error instanceof Error ) throw error
@@ -1033,7 +1036,7 @@ class TaskProcessor {
         }
         catch( Throwable e ) {
             // no recoverable error
-            log.error("Execution aborted due to an unexpected error", e )
+            log.error("Execution aborted due to an unexpected error: ${e.toString()} with trace ${e.printStackTrace()}")
         }
 
         return new TaskFault(error: error, task: task, report: message.join('\n'))
@@ -1054,7 +1057,7 @@ class TaskProcessor {
         }
 
         // RETRY strategy -- check that process do not exceed 'maxError' and the task do not exceed 'maxRetries'
-        if( action == RETRY ) {
+        if( action == RETRY || action == FINISH ) {
             final int maxErrors = task.config.getMaxErrors()
             final int maxRetries = task.config.getMaxRetries()
 
@@ -1074,7 +1077,7 @@ class TaskProcessor {
                 } as Runnable)
                 return RETRY
             }
-
+            log.warn("terminating after task $task because of $maxErrors maxErr and $maxRetries maxRetries")
             return TERMINATE
         }
 
