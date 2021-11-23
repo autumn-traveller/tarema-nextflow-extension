@@ -20,6 +20,8 @@ class MemoryBandit {
     int numRuns
     boolean withLogs
     boolean tooShort
+    String command
+    int lastTaskId
 
     private static long toMega(m) { m >> 20 }
 
@@ -38,8 +40,9 @@ class MemoryBandit {
         log.error("MemBandit \"$taskName\": $var1",var2)
     }
 
-    public MemoryBandit(long minMem, long maxMem, long currentMem, String taskName, boolean withLogs){
+    public MemoryBandit(long minMem, long maxMem, long currentMem, String taskName, String cmd, boolean withLogs){
         this.taskName = taskName
+        this.command = cmd.replace('-','')
         this.withLogs = withLogs
         this.stepSize = 0.1 // perhaps 0.2 or 0.05?
         this.minMem = minMem
@@ -62,6 +65,7 @@ class MemoryBandit {
         }
         this.memoryAvgReward = 0
         this.numRuns = 0
+        this.lastTaskId = 0
     }
 
     private void updateProbabilities(){
@@ -101,10 +105,10 @@ class MemoryBandit {
     }
 
     private void readPrevRewards() {
-        logInfo("Searching SQL for Bandit $taskName")
+        logInfo("Searching SQL for Bandit $taskName lastId $lastTaskId and cmd $command")
         def sql = new Sql(TaskDB.getDataSource())
-        def searchSql = "SELECT peak_rss,memory,realtime FROM taskrun WHERE task_name = (?)"
-        sql.eachRow(searchSql,[taskName]) { row ->
+        def searchSql = "SELECT peak_rss,memory,realtime FROM taskrun WHERE task_name = (?) and id > (?) and rl_active = true and wf_name like (?)"
+        sql.eachRow(searchSql,[taskName,this.lastTaskId,"%${this.command}%".toString()]) { row ->
             def rss = (long) row.peak_rss
             def mem = (long) row.memory
             def realtime = (long) row.realtime
