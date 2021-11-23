@@ -7,11 +7,11 @@ import groovy.util.logging.Slf4j
 class MemBanditMap {
     Map<String,MemoryBandit> bandits = [:];
 
-    synchronized MemoryBandit getBandit(long minMem, long maxMem, long currentMem, String task_name, boolean withLogs){
+    synchronized MemoryBandit getBandit(long minMem, long maxMem, long currentMem, String task_name, String cmd, boolean withLogs){
         MemoryBandit b = bandits.get(task_name);
 //        Date now = new Date()
         if (!b) {
-            b = new MemoryBandit(minMem,maxMem,currentMem,task_name,withLogs)
+            b = new MemoryBandit(minMem,maxMem,currentMem,task_name,cmd,withLogs)
             bandits.put(task_name,b)
 //            log.info("Creating new bandit: $b for $task_name at ${now.toString()}")
         } else {

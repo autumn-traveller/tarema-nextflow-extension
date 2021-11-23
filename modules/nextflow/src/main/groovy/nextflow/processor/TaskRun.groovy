@@ -647,16 +647,18 @@ class TaskRun implements Cloneable {
         this.code.setResolveStrategy(Closure.DELEGATE_ONLY)
 
         def config = this.getConfig()
-        def sessionConfig = this.processor.getSession().config
+        def session = this.processor.getSession()
+        def sessionConfig = session.config
         def withLearning = sessionConfig.withLearning as boolean
         boolean withLogs = sessionConfig.logRl as boolean
         def maxcpus = sessionConfig.maxConfiguredCpus
+        def cmd = session.commandLine.split(' ')[2]
 
         def taskName = (name != null) ? name : getName()
         if(taskName != null && withLearning ){
 //            log.warn("learning is active, enableing gradient bandit")
             def cpuAction = BanditMap.instance.getBandit((maxcpus && maxcpus as int > 0) ? maxcpus as int : 8 ,taskName.split(" ")[0],withLogs)
-            def memAction = MemBanditMap.instance.getBandit((7 << 20),(125 << 30),config.getMemory().toBytes(),taskName.split(" ")[0],withLogs)
+            def memAction = MemBanditMap.instance.getBandit((7 << 20),(125 << 30),config.getMemory().toBytes(),taskName.split(" ")[0],cmd,withLogs)
             def oldCpu = config.getCpus()
             def oldMem = config.getMemory()
             def allocdCpus = cpuAction.allocateCpu()
@@ -665,7 +667,7 @@ class TaskRun implements Cloneable {
                 config.setProperty("cpus",allocdCpus)
                 config.setProperty("memory",new MemoryUnit(allocdMem))
                 config.put("bandit","active")
-                log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was ${oldCpu}) memory = ${config.getMemory().toMega()} MB (oldoconfg was ${oldMem.toMega()} MB)")
+                log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was ${oldCpu}) memory = ${config.getMemory().toMega()} MB (oldconf was ${oldMem.toMega()} MB)")
             } else {
                 config.setProperty("memory",new MemoryUnit(allocdMem)) // always safe
                 config.put("bandit","inactive")
