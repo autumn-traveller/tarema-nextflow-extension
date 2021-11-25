@@ -140,14 +140,16 @@ class GradientBandit {
         def sql = new Sql(TaskDB.getDataSource())
         def searchSql = "SELECT id,cpus,cpu_usage,realtime FROM taskrun WHERE task_name = (?) and rl_active = true and id > (?) order by created_at asc"
         sql.eachRow(searchSql,[taskName,lastTaskId]) { row ->
-            this.lastTaskId = row.id as int
-            def cpus = row.cpus as int
-            def usage = row.cpu_usage as float
-            def realtime = row.realtime as int
-            logInfo("Task \"$taskName\": probabilities BEFORE: $cpuProbabilities")
-            updateCpuPreferences(cpus,usage,realtime)
-            updateCpuProbabilities()
-            logInfo("Task \"$taskName\": probabilities AFTER: $cpuProbabilities")
+            if(row.cpu_usage != null){
+                this.lastTaskId = row.id as int
+                def cpus = row.cpus as int
+                def usage = row.cpu_usage as float
+                def realtime = row.realtime as int
+                logInfo("Task \"$taskName\": probabilities BEFORE: $cpuProbabilities")
+                updateCpuPreferences(cpus,usage,realtime)
+                updateCpuProbabilities()
+                logInfo("Task \"$taskName\": probabilities AFTER: $cpuProbabilities")
+            }
         }
         sql.close()
         logInfo("Done with SQL for Bandit $taskName")
