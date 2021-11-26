@@ -656,8 +656,12 @@ class TaskRun implements Cloneable {
         if(taskName != null && withLearning ){
             def oldCpu = config.getCpus()
             def oldMem = config.getMemory()
-            FeedbackLoop.sizeTask(taskName,config,runType,withLogs)
-            log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was $oldCpu) memory = ${config.getMemory()} (oldConf was $oldMem)")
+            if (FeedbackLoop.sizeTask(taskName.split(" ")[0],config,runType,withLogs)){
+                log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was $oldCpu) memory = ${config.getMemory()} (oldConf was $oldMem)")
+                config.put("bandit","active")
+            } else {
+                config.put("bandit","inactive")
+            }
         } else if(!withLearning){
 //            log.warn("training feedback loop by assigning max resources")
 	        config.put("cpus",32)
