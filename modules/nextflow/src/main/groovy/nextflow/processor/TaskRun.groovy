@@ -17,6 +17,8 @@
 
 package nextflow.processor
 
+import nextflow.util.MemoryUnit
+
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
@@ -650,22 +652,17 @@ class TaskRun implements Cloneable {
         boolean withLogs = sessionConfig.logRl as boolean
         def maxcpus = sessionConfig.maxConfiguredCpus
 
-
         def taskName = (name != null) ? name : getName()
         if(taskName != null && withLearning ){
-//            log.warn("learning is active, enableing gradient bandit")
-            def action = BanditMap.instance.getBandit((maxcpus && maxcpus as int > 0) ? maxcpus as int : 8 ,taskName.split(" ")[0],withLogs)
             def oldCpu = config.getCpus()
-            def allocd = action.allocateCpu()
-            if (allocd > 0){
-                config.setProperty("cpus",allocd)
-                config.put("bandit","active")
-                log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was ${oldCpu}) memory = ${config.getMemory()} and time ${config.getTime()}")
-            } else {
-                config.put("bandit","inactive")
-            }
+            def oldMem = config.getMemory()
+            FeedbackLoop.sizeTask(taskName,config,runType,withLogs)
+            log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was $oldCpu) memory = ${config.getMemory()} (oldConf was $oldMem)")
         } else if(!withLearning){
-//            log.warn("vanilla mode, not using gradient bandit")
+//            log.warn("training feedback loop by assigning max resources")
+	        config.put("cpus",32)
+            long mem = 124000000000 // 124 GB (maximum possible RAM)
+            config.put('memory', new MemoryUnit(mem))
             config.put("vanilla","active")
         }
 
