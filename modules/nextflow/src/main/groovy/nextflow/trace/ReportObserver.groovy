@@ -210,6 +210,12 @@ class ReportObserver implements TraceObserver {
         // ÜBERPRÜFEN, ob TASK success
         if (!(trace.getProperty("status") as String).equals("FAILED")) {
             sendDataToDB(handler.getTask(), trace)
+        } else {
+//            log.warn("Report Observa tracer errah : $trace (memstuff ${trace.get("peak_rss")}) ")
+            if(trace.get('exit') as int in 137..140){
+                log.warn("we have an oom victim: $trace")
+                sendDataToDB(handler.getTask(), trace)
+            }
         }
 
         synchronized (records) {
@@ -230,25 +236,33 @@ class ReportObserver implements TraceObserver {
         }
 
         def sql = new Sql(TaskDB.getDataSource())
-
-        def insertSql = 'INSERT INTO TaskRun (task_name, cpu_usage, mem_usage, rss, peak_rss, vmem, peak_vmem, rchar, wchar, cpus, memory, realtime, duration, rl_active, run_name, wf_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        // TODO add taskName
         def taskName = task.name.split(" ")[0]
-        def params = [taskName, trace.get("%cpu"), trace.get("%mem"), trace.get("rss"), trace.get("peak_rss"), trace.get("vmem"), trace.get("peak_vmem"), trace.get("rchar"), trace.get("wchar"), task.getConfig().getCpus(), task.getConfig().getMemory().getBytes(), trace.get("realtime"), task.getConfig().get('action')/*trace.get("duration")*/, session.config.withLearning, session.runName, task.container]
-        number_tasks_executed++
-        if (runMetricsMap.size() < 5) {
-            runMetricsMap.put("cpu", Double.valueOf(trace.get("%cpu") as String))
-            runMetricsMap.put("rss", Double.valueOf(trace.get("rss") as String))
-            runMetricsMap.put("rchar", Double.valueOf(trace.get("rchar") as String))
-            runMetricsMap.put("wchar", Double.valueOf(trace.get("wchar") as String))
-            runMetricsMap.put("realtime", Double.valueOf(trace.get("realtime") as String))
+
+        def insertSql,params
+        if(trace.get('exit') as int in 137..140){
+            // killed by oom killer
+            insertSql = 'INSERT INTO TaskRun (task_name, peak_rss, cpus, memory, realtime, rl_active, run_name, wf_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            params = [taskName, task.getConfig().getMemory().getBytes()+1, task.getConfig().getCpus(), task.getConfig().getMemory().getBytes(), trace.get("realtime"), session.config.withLearning, session.runName, task.container]
 
         } else {
-            calcNewAvg("cpu", Double.valueOf(trace.get("%cpu") as String))
-            calcNewAvg("rss", Double.valueOf(trace.get("rss") as String))
-            calcNewAvg("rchar", Double.valueOf(trace.get("rchar") as String))
-            calcNewAvg("wchar", Double.valueOf(trace.get("wchar") as String))
-            calcNewAvg("realtime", Double.valueOf(trace.get("realtime") as String))
+
+            insertSql = 'INSERT INTO TaskRun (task_name, cpu_usage, rss, peak_rss, vmem, peak_vmem, rchar, wchar, cpus, memory, realtime, duration, rl_active, run_name, wf_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            params = [taskName, trace.get("%cpu"), trace.get("rss"), trace.get("peak_rss"), trace.get("vmem"), trace.get("peak_vmem"), trace.get("rchar"), trace.get("wchar"), task.getConfig().getCpus(), task.getConfig().getMemory().getBytes(), trace.get("realtime"), trace.get("duration"), session.config.withLearning, session.runName, task.container]
+            number_tasks_executed++
+            if (runMetricsMap.size() < 5) {
+                runMetricsMap.put("cpu", Double.valueOf(trace.get("%cpu") as String))
+                runMetricsMap.put("rss", Double.valueOf(trace.get("rss") as String))
+                runMetricsMap.put("rchar", Double.valueOf(trace.get("rchar") as String))
+                runMetricsMap.put("wchar", Double.valueOf(trace.get("wchar") as String))
+                runMetricsMap.put("realtime", Double.valueOf(trace.get("realtime") as String))
+
+            } else {
+                calcNewAvg("cpu", Double.valueOf(trace.get("%cpu") as String))
+                calcNewAvg("rss", Double.valueOf(trace.get("rss") as String))
+                calcNewAvg("rchar", Double.valueOf(trace.get("rchar") as String))
+                calcNewAvg("wchar", Double.valueOf(trace.get("wchar") as String))
+                calcNewAvg("realtime", Double.valueOf(trace.get("realtime") as String))
+            }
         }
 
         try {

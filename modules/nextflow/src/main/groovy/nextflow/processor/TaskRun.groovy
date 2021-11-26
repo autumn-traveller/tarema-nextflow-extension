@@ -27,7 +27,6 @@ import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
 import nextflow.Session
 import nextflow.cli.CmdRun
-import nextflow.util.MemoryUnit
 import nextflow.TaskDB
 import nextflow.conda.CondaCache
 import nextflow.conda.CondaConfig
@@ -646,31 +645,27 @@ class TaskRun implements Cloneable {
         this.code.setResolveStrategy(Closure.DELEGATE_ONLY)
 
         def config = this.getConfig()
-        def session = this.processor.getSession()
-        def sessionConfig = session.config
-        def withLearning = sessionConfig.withLearning
-        boolean withLogs = sessionConfig.logRl
+        def sessionConfig = this.processor.getSession().config
+        def withLearning = sessionConfig.withLearning as boolean
+        boolean withLogs = sessionConfig.logRl as boolean
         def maxcpus = sessionConfig.maxConfiguredCpus
-        def cmd = session.commandLine.split(' ')[2]
 
 
         def taskName = (name != null) ? name : getName()
         if(taskName != null && withLearning ){
 //            log.warn("learning is active, enableing gradient bandit")
-            def agent = AgentMap.instance.getBandit(config.getCpus(),(maxcpus && maxcpus as int > 0) ? maxcpus as int : 8,config.getMemory().toBytes(),125 << 30,taskName.split(" ")[0],cmd,session.runName,withLogs)
+            def action = BanditMap.instance.getBandit((maxcpus && maxcpus as int > 0) ? maxcpus as int : 8 ,taskName.split(" ")[0],withLogs)
             def oldCpu = config.getCpus()
-            def oldMem = config.getMemory()
-            if (agent.takeAction(config)){
+            def allocd = action.allocateCpu()
+            if (allocd > 0){
+                config.setProperty("cpus",allocd)
                 config.put("bandit","active")
-                log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was $oldCpu) memory = ${config.getMemory()} (oldConf was $oldMem)")
+                log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was ${oldCpu}) memory = ${config.getMemory()} and time ${config.getTime()}")
             } else {
                 config.put("bandit","inactive")
             }
         } else if(!withLearning){
 //            log.warn("vanilla mode, not using gradient bandit")
-	    config.put("cpus",32)
-            long mem = 124000000000 // 124 GB (maximum possible RAM)
-            config.put('memory', new MemoryUnit(mem))
             config.put("vanilla","active")
         }
 

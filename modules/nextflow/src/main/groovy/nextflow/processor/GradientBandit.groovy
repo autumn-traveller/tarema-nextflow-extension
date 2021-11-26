@@ -11,43 +11,11 @@ class GradientBandit {
     double[] cpuPreferences
     double[] cpuProbabilities
     double cpuAvgReward
-    long maxMem
-    long minMem
-    int memChunkSize
-    int numChunks
-    double[] memoryPreferences
-    double[] memoryProbabilities
-    double memoryAvgReward
     double stepSizeCpu
-    double stepSizeMem
     String taskName
     int numRuns
     int lastTaskId
     boolean tooShort = false
-
-    public GradientBandit(int maxCpu, long minMem, long maxMem, int chunkSize, int numChunks, double stepSizeCpu, double stepSizeMem, String taskName){
-        this.maxCpu = maxCpu
-        this.minMem = minMem
-        this.maxMem = maxMem
-        this.memChunkSize = chunkSize
-        this.numChunks = numChunks
-        this.stepSizeCpu = stepSizeCpu
-        this.stepSizeMem = stepSizeMem
-        this.taskName = taskName
-        this.cpuPreferences = new double[maxCpu]
-        this.cpuProbabilities = new double[maxCpu]
-        for (i in 0..<maxCpu) {
-            cpuProbabilities[i] = 1/((double)maxCpu)
-        }
-        this.cpuAvgReward = 0
-        this.memoryPreferences = numChunks >= 0 ? new double [numChunks] : null
-        this.memoryProbabilities = numChunks >= 0 ? new double [numChunks] : null
-        for (i in 0..<numChunks) {
-            memoryProbabilities[i] = 1.0/((double)numChunks)
-        }
-        this.memoryAvgReward = 0
-        numRuns = 0
-    }
 
     public GradientBandit(int cpus, String taskName, double stepSize){
         this.taskName = taskName
@@ -65,7 +33,7 @@ class GradientBandit {
         this.readPrevRewards()
     }
 
-    public GradientBandit(int cpus, String taskName){
+    public GradientBandit(int cpus, String taskName, boolean withLogs){
         this.taskName = taskName
         this.maxCpu = cpus
         this.stepSizeCpu = calculateStepSize()
@@ -149,9 +117,9 @@ class GradientBandit {
         }
     }
 
-    private void updateCpuPreferences(int cpus, float usage){
-        def r = reward(cpus, usage)
-        logInfo("Task \"$taskName\": cpus alloc'd $cpus, cpu usage $usage-> reward $r (avg reward so far: $cpuAvgReward)\n")
+    private void updateCpuPreferences(int cpus, float usage, int realtime){
+        def r = reward(cpus, usage, realtime)
+        logInfo("Task \"$taskName\": cpus alloc'd $cpus, cpu usage $usage, realtime $realtime -> reward $r (avg reward so far: $cpuAvgReward)\n")
         for (i in 0..<maxCpu) {
             if (i == cpus - 1){
                 def oldval = cpuPreferences[i]
@@ -174,7 +142,7 @@ class GradientBandit {
         sql.eachRow(searchSql,[taskName,lastTaskId]) { row ->
             this.lastTaskId = row.id as int
             def cpus = row.cpus as int
-            def usage = row.cpu_usage as int
+            def usage = row.cpu_usage as float
             def realtime = row.realtime as int
             logInfo("Task \"$taskName\": probabilities BEFORE: $cpuProbabilities")
             updateCpuPreferences(cpus,usage,realtime)
@@ -185,12 +153,14 @@ class GradientBandit {
         logInfo("Done with SQL for Bandit $taskName")
     }
 
-    double reward(int cpuCount, float usage) {
-        // reward function is maximized when cpuUsage = cpuAllocation
-        // However to account for when more than 100% of the cpus are used we subtract from 100 the absolute difference between the actual cpuUsage and 100% usage
-        // Therefore 95% and 105% usage both yield the same reward -> 95
-        // since the usage field normally needs to be divided by 100 first, usage divided cpuCount converts directly to a percentage
-        double r = 100 - Math.abs(100 - usage/cpuCount)
+    double reward(int cpuCount, float usage, int realtime) {
+        // aim for 100% usage of the allocated cpus
+        // highest reward comes with 100% usage of the available cpus and minimal runtime
+        // sometimes usage > 100% * numcpus will be reported so we take the smaller value of 100% and the actual usage
+        // reward is negative so we want to keep its absolute value small since we are using it with the exp() function
+        // divide by 1000 because realtime measurements are inaccurate for tasks with runtimes smaller than 1s
+        double r = -1 * (realtime/1000) * (1 + cpuCount - Math.min(usage,cpuCount*100)/100)
+//        double r = -1 * cpuCount * realtime
         cpuAvgReward = (numRuns * cpuAvgReward + r)/(numRuns + 1)
         numRuns++
         return r
@@ -226,10 +196,6 @@ class GradientBandit {
         readPrevRewards()
         //logBandit()
         return pickCpu(Math.random())
-    }
-
-    public int allocateMem(){
-        return 0
     }
 
 }
