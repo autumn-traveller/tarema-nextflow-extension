@@ -428,7 +428,7 @@ class HistoryFile extends File {
                 while( true ) {
                     lock = fos.getChannel().tryLock()
                     if( lock ) break
-                    if( System.currentTimeMillis() - ts < 1_000 )
+                    if( System.currentTimeMillis() - ts < 3_500 )
                         sleep rnd.nextInt(75)
                     else {
                         error = new IllegalStateException("Can't lock file: ${this.absolutePath} -- Nextflow needs to run in a file system that supports file locks")

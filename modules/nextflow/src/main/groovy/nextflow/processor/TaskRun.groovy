@@ -656,11 +656,16 @@ class TaskRun implements Cloneable {
 
         def taskName = (name != null) ? name : getName()
         if(taskName != null && withLearning ){
-//            log.warn("learning is active, enableing gradient bandit")
+//            log.warn("learning is active, enabling gradient bandit")
             def cpuAction = BanditMap.instance.getBandit((maxcpus && maxcpus as int > 0) ? maxcpus as int : 8 ,taskName.split(" ")[0],withLogs)
             def memAction = MemBanditMap.instance.getBandit((7 << 20),(125 << 30),config.getMemory().toBytes(),taskName.split(" ")[0],cmd,withLogs)
             def oldCpu = config.getCpus()
             def oldMem = config.getMemory()
+
+            // if (FeedbackLoop.sizeTask(taskName.split(" ")[0],config,runType,withLogs)){
+            //     log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was $oldCpu) memory = ${config.getMemory()} (oldConf was $oldMem)")
+            // }
+
             def allocdCpus = cpuAction.allocateCpu()
             def allocdMem = memAction.allocateMem(this.failCount as int,this.runType,config.getMemory().toBytes())
             if (allocdCpus > 0){
@@ -673,7 +678,11 @@ class TaskRun implements Cloneable {
                 config.put("bandit","inactive")
             }
         } else if(!withLearning){
-//            log.warn("vanilla mode, not using gradient bandit")
+//            log.warn("training feedback loop by assigning max resources")
+//            log.warn("rl is NOT active")
+	        // config.put("cpus",32)
+            // long mem = 124000000000 // 124 GB (maximum possible RAM)
+            // config.put('memory', new MemoryUnit(mem))
             config.put("vanilla","active")
         }
 
