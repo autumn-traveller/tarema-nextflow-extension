@@ -101,44 +101,8 @@ class MemoryBandit {
                 logInfo("update rest preferences: memPreferences[$i] = $oldval - $stepSize * ($r - $memoryAvgReward) *  ${memoryProbabilities[i]} = ${memoryPreferences[i]}\n")
             }
         }
-        this.visited = new boolean[numChunks][]
-        for (i in 0..<numChunks) {
-            visited[i] = new boolean[numActions]
-            for (j in 0..<numActions){
-                visited[i][j] = false
-            }
-        }
-        this.timesTried = new int[numChunks][]
-        for (i in 0..<numChunks) {
-            timesTried[i] = new int[numActions]
-            for (j in 0..<numActions){
-                timesTried[i][j] = 0
-            }
-        }
-        this.stepSize = stepSize
-        this.discount = discount
-        this.epsilon = epsilon
-        this.taskName = taskName
+
     }
-
-
-//    private void readPrevRewards() {
-//        // TODO
-//        log.info("Searching SQL for Bandit $taskName")
-//        def sql = new Sql(TaskDB.getDataSource())
-//        def searchSql = "SELECT cpus,cpu_usage, FROM taskrun WHERE task_name = (?)"
-//        sql.eachRow(searchSql,[taskName]) { row ->
-//            def cpus = (int) row.cpus
-//            def usage = (float) row.cpu_usage
-//            def realtime = (int) row.realtime
-//            log.info("Task \"$taskName\": prefs and probabilities BEFORE: $cpuPreferences , $cpuProbabilities")
-//            updatePreferences(cpus,usage,realtime)
-//            updateProbabilities()
-//            log.info("Task \"$taskName\": prefs and probabilities AFTER: $cpuPreferences , $cpuProbabilities")
-//        }
-//        sql.close()
-//        log.info("Done with SQL for Bandit $taskName")
-//    }
 
     private void readPrevRewards() {
         logInfo("Searching SQL for Bandit $taskName lastId $lastTaskId and cmd $command")
