@@ -11,6 +11,7 @@ class MemoryBandit {
     long maxMem
     long minMem
     long chunkSize
+    long initialConfig
     int numChunks
     double[] memoryPreferences
     double[] memoryProbabilities
@@ -24,6 +25,7 @@ class MemoryBandit {
     int lastTaskId
 
     private static long toMega(m) { m >> 20 }
+    private static long toGiga(m) { m >> 30 }
 
     private static String memPrint(long m){
         return "${toMega(m)} MB"
@@ -40,24 +42,22 @@ class MemoryBandit {
         log.error("MemBandit \"$taskName\": $var1",var2)
     }
 
-    public MemoryBandit(long minMem, long maxMem, long currentMem, String taskName, String cmd, boolean withLogs){
+    public MemoryBandit(long initialConfig, int numChunks, String taskName, String cmd, boolean withLogs){
         this.taskName = taskName
+        this.initialConfig = initialConfig
         this.command = cmd.replace('-','')
         this.withLogs = withLogs
         this.stepSize = 0.1 // perhaps 0.2 or 0.05?
-        this.minMem = minMem
-        this.maxMem = maxMem
-        this.numChunks = 10 // possible allocations are 0.125 up to 1.25 times the default config
-        this.chunkSize = currentMem >> 3 // memory chunks are 1/8th of the default configuration
-        if (chunkSize <= minMem){
-            chunkSize = chunkSize << 1
-        }
-        if(10*chunkSize >= maxMem){
-            numChunks = 8
-        }
-        if(checkTooShort()){
+        this.numChunks = numChunks
+        this.minMem = 7 << 20 // 6MB is the minimum memory value for docker
+        if (checkTooShort()){
             return
         }
+        if (!pollHistoricUsage()){
+            this.maxMem = initialConfig + (initialConfig >> 1)
+            this.minMem = initialConfig - (initialConfig >> 1)
+        }
+        this.chunkSize = Math.round((maxMem - minMem) / numChunks)
         this.memoryPreferences = new double[numChunks] // 0 to start
         this.memoryProbabilities = new double[numChunks]
         for (i in 0..<numChunks) {
@@ -66,6 +66,34 @@ class MemoryBandit {
         this.memoryAvgReward = 0
         this.numRuns = 0
         this.lastTaskId = 0
+    }
+
+    private boolean pollHistoricUsage(){
+        try {
+            def sql = new Sql(TaskDB.getDataSource())
+            def searchSql = "SELECT AVG(peak_rss), STDDEV(peak_rss), MIN(peak_rss), MAX(peak_rss) FROM taskrun WHERE task_name = (?) and id > (?) and wf_name like (?) and rl_active = false"
+            sql.eachRow(searchSql,[taskName,this.lastTaskId,"%${this.command}%".toString()]) { row ->
+                long avg = row[0] as long
+                long stddev = row[1] as long
+                long min = row[2] as long
+                long max = row[3] as long
+
+                logInfo("historic data for task $taskName : avg ${memPrint(avg)} stddev ${memPrint(stddev)} min ${memPrint(min)} max ${memPrint(max)}")
+
+                if (max < min || max < this.minMem) {
+                    logInfo("historic data makes no sense, max ${memPrint(max)} is less than min ${memPrint(min)} or less than the absolute minimum, 7 MB")
+                    return false
+                }
+
+                this.minMem = min > this.minMem ? min : this.minMem
+                this.maxMem = max + Math.abs(stddev)
+            }
+            sql.close()
+        } catch (SQLException sqlException) {
+            logError("There was an sql error when polling historic data: " + sqlException)
+            return false
+        }
+        return true
     }
 
     private void updateProbabilities(){
@@ -141,7 +169,7 @@ class MemoryBandit {
 
     public synchronized long allocateMem(int failcount, RunType runtype,long currentConfig){
         if(tooShort){
-            return 8 * chunkSize // default config
+            return initialConfig
         }
         readPrevRewards()
         long r = 0
@@ -181,7 +209,7 @@ class MemoryBandit {
             }
             sql.close()
         } catch (SQLException sqlException) {
-            logError("There was an error: " + sqlException)
+            logError("There was an sql error in checkTooShort(): " + sqlException)
         }
         return tooShort
     }

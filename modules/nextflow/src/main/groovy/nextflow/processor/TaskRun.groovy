@@ -658,7 +658,7 @@ class TaskRun implements Cloneable {
         if(taskName != null && withLearning ){
 //            log.warn("learning is active, enabling gradient bandit")
             def cpuAction = BanditMap.instance.getBandit((maxcpus && maxcpus as int > 0) ? maxcpus as int : 8 ,taskName.split(" ")[0],withLogs)
-            def memAction = MemBanditMap.instance.getBandit((7 << 20),(125 << 30),config.getMemory().toBytes(),taskName.split(" ")[0],cmd,withLogs)
+            def memAction = MemBanditMap.instance.getBandit(config.getMemory().toBytes(),10,taskName.split(" ")[0],cmd,withLogs)
             def oldCpu = config.getCpus()
             def oldMem = config.getMemory()
 
