@@ -7,7 +7,8 @@ import nextflow.TaskDB
 
 @Slf4j
 class GradientBandit {
-    int maxCpu
+    int numOptions
+    int[] cpuOptions
     double[] cpuPreferences
     double[] cpuProbabilities
     double cpuAvgReward
@@ -17,14 +18,18 @@ class GradientBandit {
     int lastTaskId
     boolean tooShort = false
 
-    public GradientBandit(int cpus, String taskName, double stepSize){
+    public GradientBandit(int cpus, String taskName, boolean withLogs){
         this.taskName = taskName
-        this.maxCpu = cpus
-        this.stepSizeCpu = stepSize
-        this.cpuPreferences = new double[maxCpu] // 0 to start
-        this.cpuProbabilities = new double[maxCpu]
-        for (i in 0..<maxCpu) {
-            cpuProbabilities[i] = 1.0/((double) maxCpu) // initial probability is the same
+        this.stepSizeCpu = calculateStepSize()
+        if (tooShort) {
+            return
+        }
+        this.cpuOptions = [1,2,4,6,8,10,12,14]
+        this.numOptions = cpuOptions.size()
+        this.cpuPreferences = new double[numOptions] // 0 to start
+        this.cpuProbabilities = new double[numOptions]
+        for (i in 0..<numOptions) {
+            cpuProbabilities[i] = 1.0/((double) numOptions) // initial probability is the same
         }
         this.cpuAvgReward = 0
         this.numRuns = 0
@@ -33,21 +38,46 @@ class GradientBandit {
         this.readPrevRewards()
     }
 
-    public GradientBandit(int cpus, String taskName, boolean withLogs){
-        this.taskName = taskName
-        this.maxCpu = cpus
-        this.stepSizeCpu = calculateStepSize()
-        this.cpuPreferences = new double[maxCpu] // 0 to start
-        this.cpuProbabilities = new double[maxCpu]
-        for (i in 0..<maxCpu) {
-            cpuProbabilities[i] = 1.0/((double) maxCpu) // initial probability is the same
-        }
-        this.cpuAvgReward = 0
-        this.numRuns = 0
-        this.lastTaskId = 0
-        this.enable_logs = withLogs
-        this.readPrevRewards()
-    }
+//    private void initCpuOptions(int configCpus) {
+//        // search sql for vanilla data on the task- pick the cpuOptions based on either this or the initial config if there is no data available
+//        int base = -1
+//        def sql = new Sql(TaskDB.getDataSource())
+//        def searchSql = "SELECT COUNT(cpu_usage), AVG(cpu_usage)/100 FROM taskrun WHERE task_name = (?) and rl_active = false"
+//        try {
+//            sql.firstRow(searchSql,[taskName]) { row ->
+//                if (row && row.count >= 5) {
+//                    base = Math.round(row.cpu_usage as float)
+//                }
+//            }
+//            sql.close()
+//        } catch (SQLException sqlException) {
+//            log.info("There was an error: " + sqlException)
+//        }
+//        populateOptions(base,configCpus)
+//    }
+
+//    private void populateOptions(int base, int configCpus) {
+//        // 3 different sets of options: low use, normal, high use
+//        // if we have existing data we pick one of those three, if there is no existing data on the task we pick low or normal
+//
+//        int[] low = [1,2,3,4,5,6,7,8]
+//        int[] med = [1,2,4,6,8,10,12,14]
+//        int[] high = [4,6,8,10,12,14,16]
+//
+//        if (base == -1){
+//            this.cpuOptions = configCpus > 2 ? med : low
+//            this.numOptions = cpuOptions.size()
+//            return
+//        }
+//
+//        def usage = base / configCpus
+//        if (usage >= 0.75 && configCpus >= 4) {
+//            this.cpuOptions = high
+//            this.numOptions = cpuOptions.size()
+//            return
+//        } else if base <
+//
+//    }
 
     private double calculateStepSize(){
         def stepSize = 0.1
@@ -101,10 +131,10 @@ class GradientBandit {
 
     private void updateCpuProbabilities(){
         def s = 0
-        for (i in 0..<maxCpu) {
+        for (i in 0..<numOptions) {
             s += Math.exp(cpuPreferences[i])
         }
-        for (i in 0..<maxCpu) {
+        for (i in 0..<numOptions) {
             cpuProbabilities[i] = Math.exp(cpuPreferences[i]) / s
         }
     }
@@ -120,13 +150,12 @@ class GradientBandit {
     private void updateCpuPreferences(int cpus, float usage, int realtime){
         def r = reward(cpus, usage, realtime)
         logInfo("Task \"$taskName\": cpus alloc'd $cpus, cpu usage $usage, realtime $realtime -> reward $r (avg reward so far: $cpuAvgReward)\n")
-        for (i in 0..<maxCpu) {
-            if (i == cpus - 1){
-                def oldval = cpuPreferences[i]
+        for (i in 0 ..< numOptions) {
+            def oldval = cpuPreferences[i]
+            if (cpuOptions[i] == cpus){
                 cpuPreferences[i] = cpuPreferences[i] + stepSizeCpu * (r - cpuAvgReward) * (1 - cpuProbabilities[i])
                 logInfo("Task \"$taskName\": update (allocd cpus) preference: cpuPreferences[$i] = $oldval + $stepSizeCpu * ($r - $cpuAvgReward) * (1 - ${cpuProbabilities[i]}) = ${cpuPreferences[i]}\n")
             } else {
-                def oldval = cpuPreferences[i]
                 cpuPreferences[i] = cpuPreferences[i] - stepSizeCpu * (r - cpuAvgReward) * (cpuProbabilities[i])
                 logInfo("Task \"$taskName\": update rest preferences: cpuPreferences[$i] = $oldval - $stepSizeCpu * ($r - $cpuAvgReward) *  ${cpuProbabilities[i]} = ${cpuPreferences[i]}\n")
 
@@ -140,7 +169,7 @@ class GradientBandit {
         def sql = new Sql(TaskDB.getDataSource())
         def searchSql = "SELECT id,cpus,cpu_usage,realtime FROM taskrun WHERE task_name = (?) and rl_active = true and id > (?) order by created_at asc"
         sql.eachRow(searchSql,[taskName,lastTaskId]) { row ->
-            if(row.cpu_usage != null){
+            if(row.cpu_usage != null && row.cpus != null && (row.cpus as int) in this.cpuOptions){
                 this.lastTaskId = row.id as int
                 def cpus = row.cpus as int
                 def usage = row.cpu_usage as float
@@ -169,22 +198,21 @@ class GradientBandit {
     }
 
     private int pickCpu(double rand){
-        int ret = 0
         double pdf = 0
-        for (i in 0..<maxCpu) {
+        for (i in 0..<numOptions) {
             pdf += cpuProbabilities[i]
             if (rand <= pdf){
-                return i + 1
+                return cpuOptions[i]
             }
         }
-        log.error("$taskName Bandit couldnt pick a cpu, are the probabilities okay? ($cpuProbabilities) ... defaulting to 1 cpu")
+        log.error("$taskName Bandit couldnt pick a cpu, are the probabilities okay? ($cpuProbabilities) ... defaulting to configured cpus")
         return -1
     }
 
     void logBandit(){
         def s = ""
         s += "Bandit $taskName\n"
-        for (i in 0..<maxCpu) {
+        for (i in 0..<numOptions) {
             s += "Action ${i+1} cpus: Preference ${cpuPreferences[i]} Probability ${cpuProbabilities[i]}\n"
         }
         s += "$cpuAvgReward"

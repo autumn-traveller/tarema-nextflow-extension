@@ -45,7 +45,7 @@ class MemoryBandit {
     public MemoryBandit(long initialConfig, int numChunks, String taskName, String cmd, boolean withLogs){
         this.taskName = taskName
         this.initialConfig = initialConfig
-        this.command = cmd.replace('-','')
+        this.command = cmd.split("\\./evaluation_assets/nf-core/")[1].replace('/','')
         this.withLogs = withLogs
         this.stepSize = 0.1 // perhaps 0.2 or 0.05?
         this.numChunks = numChunks
@@ -71,8 +71,8 @@ class MemoryBandit {
     private boolean pollHistoricUsage(){
         try {
             def sql = new Sql(TaskDB.getDataSource())
-            def searchSql = "SELECT AVG(peak_rss), STDDEV(peak_rss), MIN(peak_rss), MAX(peak_rss) FROM taskrun WHERE task_name = (?) and id > (?) and wf_name like (?) and rl_active = false"
-            sql.eachRow(searchSql,[taskName,this.lastTaskId,"%${this.command}%".toString()]) { row ->
+            def searchSql = "SELECT AVG(peak_rss), STDDEV(peak_rss), MIN(peak_rss), MAX(peak_rss) FROM taskrun WHERE task_name = (?) and wf_name like (?) and rl_active = false"
+            sql.eachRow(searchSql,[taskName,"%${this.command}%".toString()]) { row ->
                 long avg = row[0] as long
                 long stddev = row[1] as long
                 long min = row[2] as long

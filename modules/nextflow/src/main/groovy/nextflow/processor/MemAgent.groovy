@@ -77,6 +77,7 @@ class MemAgent {
     String runName
     float epsilon
     int lastTaskId
+    int count
     boolean tooShort = false
     boolean withLogs
 
@@ -102,7 +103,7 @@ class MemAgent {
         this.withLogs = withLogs
         this.taskName = taskName
         this.count = 0
-        this.command = command
+        this.command = command.split("\\./evaluation_assets/nf-core/")[1].replace('/','')
         this.runName = runName
         if(checkTooShort()){
             return
@@ -144,8 +145,8 @@ class MemAgent {
     private void readPrevRewards() {
         logInfo("Starting SQL for Agent")
         def sql = new Sql(TaskDB.getDataSource())
-        def searchSql = "SELECT taskrun.id,realtime,memory,peak_rss,taskrun.duration FROM taskrun LEFT JOIN runs ON taskrun.run_name = runs.run_name WHERE task_name = (?) and taskrun.rl_active = true and taskrun.id > (?) and (command = (?) or taskrun.run_name = (?)) ORDER BY created_at asc"
-        sql.eachRow(searchSql,[taskName, lastTaskId, command, runName]) { row ->
+        def searchSql = "SELECT taskrun.id,realtime,memory,peak_rss,taskrun.duration FROM taskrun LEFT JOIN runs ON taskrun.run_name = runs.run_name WHERE task_name = (?) and taskrun.rl_active = true and taskrun.id > (?) and (command like (?) or taskrun.run_name = (?)) ORDER BY created_at asc"
+        sql.eachRow(searchSql,[taskName, lastTaskId, "%${this.command}%".toString(), runName]) { row ->
             this.lastTaskId = (int) row.id
             def realtime = (long) row.realtime
             def rss =  (long) row.peak_rss
