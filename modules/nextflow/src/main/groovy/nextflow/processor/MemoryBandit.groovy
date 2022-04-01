@@ -54,9 +54,10 @@ class MemoryBandit {
             return
         }
         if (!pollHistoricUsage()){
-            this.maxMem = initialConfig + (initialConfig >> 1)
-            this.minMem = initialConfig - (initialConfig >> 1)
+            this.maxMem = initialConfig
+            this.minMem = 0
         }
+        logInfo("memory options for task $taskName : min ${memPrint(minMem)} and max ${memPrint(maxMem)}")
         this.chunkSize = Math.round((maxMem - minMem) / numChunks)
         this.memoryPreferences = new double[numChunks] // 0 to start
         this.memoryProbabilities = new double[numChunks]
@@ -81,12 +82,16 @@ class MemoryBandit {
                 logInfo("historic data for task $taskName : avg ${memPrint(avg)} stddev ${memPrint(stddev)} min ${memPrint(min)} max ${memPrint(max)}")
 
                 if (max < min || max < this.minMem) {
-                    logInfo("historic data makes no sense, max ${memPrint(max)} is less than min ${memPrint(min)} or less than the absolute minimum, 7 MB")
+                    logInfo("historic data makes no sense, max ${memPrint(max)} is less than the minimum ${memPrint(min)}")
                     return false
                 }
-
                 this.minMem = min > this.minMem ? min : this.minMem
-                this.maxMem = max + Math.abs(stddev)
+                if (max <= this.minMem) {
+                    logInfo("max is less than the adjusted minimum ${memPrint(this.minMem)}")
+                    this.maxMem = this.minMem + 2*Math.abs(stddev)
+                } else {
+                    this.maxMem = max + Math.abs(stddev)
+                }
             }
             sql.close()
         } catch (SQLException sqlException) {
@@ -108,23 +113,24 @@ class MemoryBandit {
 
     private void updatePreferences(long rss, long mem, long realtime){
         def r = reward(rss, mem, realtime)
-        int memIndex = (mem / chunkSize) - 1
-        if (!(memIndex in 0..numChunks)){
+        int memIndex = ((mem - minMem)/ chunkSize) - 1
+        if (!(memIndex in 0..<numChunks)){
             log.warn("Invalid memIndex $memIndex for ${memPrint(mem)} and chunksize $chunkSize")
             memIndex = Math.round(mem/chunkSize) - 1
-            if (!(memIndex in 0..numChunks)){
-                logError("Invalid memIndex even when rounding: $memIndex for ${memPrint(mem)} and chunksize $chunkSize")
+            if (!(memIndex in 0..<numChunks)){
+                if (mem != initialConfig) {
+                    logError("Invalid memIndex even when rounding: $memIndex for ${memPrint(mem)} and chunksize $chunkSize")
+                }
                 return
             }
         }
         logInfo("memory alloc'd ${memPrint(mem)}, mem usage ${memPrint(rss)} (${rss*100/mem} %) -> reward $r\n")
         for (i in 0..<numChunks) {
+            def oldval = memoryPreferences[i]
             if (i == memIndex ){
-                def oldval = memoryPreferences[i]
                 memoryPreferences[i] = oldval + stepSize * (r - memoryAvgReward) * (1 - memoryProbabilities[i])
                 logInfo("update rest preferences: memPreferences[$i] = $oldval + $stepSize * ($r - $memoryAvgReward) *  (1 - ${memoryProbabilities[i]}) = ${memoryPreferences[i]}\n")
             } else {
-                def oldval = memoryPreferences[i]
                 memoryPreferences[i] = oldval - stepSize * (r - memoryAvgReward) * (memoryProbabilities[i])
                 logInfo("update rest preferences: memPreferences[$i] = $oldval - $stepSize * ($r - $memoryAvgReward) *  ${memoryProbabilities[i]} = ${memoryPreferences[i]}\n")
             }
@@ -150,8 +156,16 @@ class MemoryBandit {
     }
 
     double reward(long rss, long memory, long realtime) {
-        double unusedChunks = ((double) Math.max((memory - rss),0)) / ((double) chunkSize)
-        double r = (rss != memory+1) ? -1*unusedChunks : -2*memory/chunkSize // if we were killed by the oom killer we receive -2 * the memory allocated
+        double r
+        if (rss > memory) {
+            // if we were killed by the oom killer this is marked in the db by setting rss = mem + 1
+            // and we receive -1 * (maxChunk + chunks allocated) as the reward because we have wasted that much memory and must run the task again which will cost more memory
+            r = -1*(numChunks + (memory - minMem)/chunkSize)
+        } else {
+            double unusedChunks = (memory - Math.max(rss,minMem)) / ((double) chunkSize)
+            r = -1*unusedChunks
+        }
+        // best possible reward is -1, which happens when we are assigning the minimum possible memory
         memoryAvgReward = (numRuns * memoryAvgReward + r)/(numRuns + 1)
         numRuns++
         return r
@@ -167,7 +181,7 @@ class MemoryBandit {
         logInfo(s)
     }
 
-    public synchronized long allocateMem(int failcount, RunType runtype,long currentConfig){
+    public synchronized long allocateMem(int failcount, RunType runtype, long currentConfig){
         if(tooShort){
             return initialConfig
         }
@@ -178,22 +192,23 @@ class MemoryBandit {
         for (i in 0..<numChunks) {
             pdf += memoryProbabilities[i]
             if (rand <= pdf){
-                r = (i + 1)*chunkSize
+                r = (i + 1)*chunkSize + minMem
                 break
             }
         }
         if(r == 0) {
             logError("$taskName Bandit couldnt pick a memory allocation, are the probabilities okay? ($memoryProbabilities) ... defaulting to original config")
-            return 8 * chunkSize // default config
+            return initialConfig
         }
-        if (runtype == RunType.RETRY && r <= currentConfig){
-            logError("$taskName Bandit was killed with ${memPrint(currentConfig)} but the bandit picked ${memPrint(r)} as new config. Now returning either double that or the original config")
-            if((r * 2) <= currentConfig || r/chunkSize >= 0.5) {
-                return 8 * chunkSize
+        if(runtype == RunType.RETRY && r <= initialConfig){
+            logError("$taskName Bandit was (probably) killed with ${memPrint(currentConfig)} but the bandit picked ${memPrint(r)} as new config. Now returning either maxMem or the initial config")
+            if(maxMem <= currentConfig) {
+                return initialConfig
             } else {
-                return r*2
+                return maxMem
             }
         }
+        // the case where the task is killed with the initialConfig is ignored because it should/cant really occur
         return r
     }
 
