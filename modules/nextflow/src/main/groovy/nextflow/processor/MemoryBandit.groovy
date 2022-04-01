@@ -57,8 +57,8 @@ class MemoryBandit {
             this.maxMem = initialConfig
             this.minMem = 0
         }
-        logInfo("memory options for task $taskName : min ${memPrint(minMem)} and max ${memPrint(maxMem)}")
         this.chunkSize = Math.round((maxMem - minMem) / numChunks)
+        logInfo("memory options for task $taskName : min ${memPrint(minMem)}, max ${memPrint(maxMem)}, and chunkSize ${memPrint(chunkSize)}")
         this.memoryPreferences = new double[numChunks] // 0 to start
         this.memoryProbabilities = new double[numChunks]
         for (i in 0..<numChunks) {
@@ -72,7 +72,7 @@ class MemoryBandit {
     private boolean pollHistoricUsage(){
         try {
             def sql = new Sql(TaskDB.getDataSource())
-            def searchSql = "SELECT AVG(peak_rss), STDDEV(peak_rss), MIN(peak_rss), MAX(peak_rss) FROM taskrun WHERE task_name = (?) and wf_name like (?) and rl_active = false"
+            def searchSql = "SELECT AVG(peak_rss), STDDEV(peak_rss), MIN(peak_rss), MAX(peak_rss) FROM taskrun WHERE task_name = (?) and wf_name like (?)"// and rl_active = false"
             sql.eachRow(searchSql,[taskName,"%${this.command}%".toString()]) { row ->
                 long avg = row[0] as long
                 long stddev = row[1] as long
@@ -85,12 +85,12 @@ class MemoryBandit {
                     logInfo("historic data makes no sense, max ${memPrint(max)} is less than the minimum ${memPrint(min)}")
                     return false
                 }
-                this.minMem = min > this.minMem ? min : this.minMem
+                this.minMem = avg > this.minMem ? avg : this.minMem
                 if (max <= this.minMem) {
                     logInfo("max is less than the adjusted minimum ${memPrint(this.minMem)}")
-                    this.maxMem = this.minMem + 2*Math.abs(stddev)
+                    this.maxMem = this.minMem + 2*avg
                 } else {
-                    this.maxMem = max + Math.abs(stddev)
+                    this.maxMem = max + 2*Math.abs(stddev)
                 }
             }
             sql.close()
@@ -112,7 +112,6 @@ class MemoryBandit {
     }
 
     private void updatePreferences(long rss, long mem, long realtime){
-        def r = reward(rss, mem, realtime)
         int memIndex = ((mem - minMem)/ chunkSize) - 1
         if (!(memIndex in 0..<numChunks)){
             log.warn("Invalid memIndex $memIndex for ${memPrint(mem)} and chunksize $chunkSize")
@@ -124,6 +123,7 @@ class MemoryBandit {
                 return
             }
         }
+        def r = reward(rss, mem, realtime)
         logInfo("memory alloc'd ${memPrint(mem)}, mem usage ${memPrint(rss)} (${rss*100/mem} %) -> reward $r\n")
         for (i in 0..<numChunks) {
             def oldval = memoryPreferences[i]
@@ -157,15 +157,15 @@ class MemoryBandit {
 
     double reward(long rss, long memory, long realtime) {
         double r
-        if (rss > memory) {
+        if (rss == memory + 1) {
             // if we were killed by the oom killer this is marked in the db by setting rss = mem + 1
             // and we receive -1 * (maxChunk + chunks allocated) as the reward because we have wasted that much memory and must run the task again which will cost more memory
             r = -1*(numChunks + (memory - minMem)/chunkSize)
         } else {
-            double unusedChunks = (memory - Math.max(rss,minMem)) / ((double) chunkSize)
+            // sometimes rss is > mem but somehow the task succeeded anyways...
+            double unusedChunks = Math.max((memory - Math.max(rss,minMem)),0) / ((double) chunkSize)
             r = -1*unusedChunks
         }
-        // best possible reward is -1, which happens when we are assigning the minimum possible memory
         memoryAvgReward = (numRuns * memoryAvgReward + r)/(numRuns + 1)
         numRuns++
         return r
@@ -181,7 +181,7 @@ class MemoryBandit {
         logInfo(s)
     }
 
-    public synchronized long allocateMem(int failcount, RunType runtype, long currentConfig){
+    public synchronized long allocateMem(int failcount, RunType runtype, long previousConfig){
         if(tooShort){
             return initialConfig
         }
@@ -200,12 +200,12 @@ class MemoryBandit {
             logError("$taskName Bandit couldnt pick a memory allocation, are the probabilities okay? ($memoryProbabilities) ... defaulting to original config")
             return initialConfig
         }
-        if(runtype == RunType.RETRY && r <= initialConfig){
-            logError("$taskName Bandit was (probably) killed with ${memPrint(currentConfig)} but the bandit picked ${memPrint(r)} as new config. Now returning either maxMem or the initial config")
-            if(maxMem <= currentConfig) {
-                return initialConfig
+        if(runtype == RunType.RETRY && r <= previousConfig){
+            logError("$taskName Bandit was (probably) killed with ${memPrint(previousConfig)} but the bandit picked ${memPrint(r)} as new config. Now returning either maxMem or larger...")
+            if (previousConfig > maxMem) {
+                return previousConfig < (1 << 30) ? (1 << 30) : Math.min(previousConfig >= initialConfig ? previousConfig * 2 : initialConfig, 120 << 30) // catch those tasks which have a hard requirement for 1GB minimum, keep doubling till it works
             } else {
-                return maxMem
+                return previousConfig < maxMem  ? maxMem : maxMem * 2 // default approach for the first two times we fail
             }
         }
         // the case where the task is killed with the initialConfig is ignored because it should/cant really occur

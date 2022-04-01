@@ -211,9 +211,9 @@ class ReportObserver implements TraceObserver {
         if (!(trace.getProperty("status") as String).equals("FAILED")) {
             sendDataToDB(handler.getTask(), trace)
         } else {
-//            log.warn("Report Observa tracer errah : $trace (memstuff ${trace.get("peak_rss")}) ")
-            if(trace.get('exit') as int in 137..140){
-                log.warn("we have an oom victim: $trace")
+            log.warn("Report Observa tracer errah : $trace")
+            if(trace.get('exit') as int in 137..140 || !trace.get('peak_rss')){
+                log.warn("think we have an oom victim: $trace, rtime: ${trace.get("realtime")}")
                 sendDataToDB(handler.getTask(), trace)
             }
         }
@@ -239,8 +239,9 @@ class ReportObserver implements TraceObserver {
         def taskName = task.name.split(" ")[0]
 
         def insertSql,params
-        if(trace.get('exit') as int in 137..140){
+        if(trace.get('exit') as int in 137..140 || !trace.get('peak_rss')){
             // killed by oom killer
+            log.info("Task $taskName killed by oom killer")
             insertSql = 'INSERT INTO TaskRun (task_name, peak_rss, cpus, memory, realtime, rl_active, run_name, wf_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
             params = [taskName, task.getConfig().getMemory().getBytes()+1, task.getConfig().getCpus(), task.getConfig().getMemory().getBytes(), trace.get("realtime"), session.config.withLearning, session.runName, task.container]
 
