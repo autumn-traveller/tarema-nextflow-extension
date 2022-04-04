@@ -41,8 +41,8 @@ class FeedbackLoop {
                 m = Math.round(maxMem + Math.abs(stdDev))
                 if(config.getErrorCount() >= 2 || m <= oldM){
                     m = Math.max(m << 1,oldM << 1)
-                    m = Math.max(m,1 << 30) // some processes may need a memory argument thas is minimum 1 gigabytes
-                    log.warn("$taskName already has 2 errors or failed with the same memory as before, now trying with double the mem and or 1GB min: ${memPrint(m)}")
+                    m = Math.max(m,1 << 30) // some processes may need a memory argument that is at least 1 gigabyte
+                    log.warn("$taskName already has 2 errors or failed with the same memory as before, now trying with double the mem or 1GB min: ${memPrint(m)}")
                 }
             }
             withLogs && log.info("$taskName returning new config: ${new MemoryUnit(m > minMem ? m : minMem)} mem and cpus $c")

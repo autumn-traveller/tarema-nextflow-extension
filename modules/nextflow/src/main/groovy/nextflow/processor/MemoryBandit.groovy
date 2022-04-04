@@ -57,6 +57,11 @@ class MemoryBandit {
             this.maxMem = initialConfig
             this.minMem = 0
         }
+        if (taskName in ['qualimap'] && minMem < (1 << 30)) { // add other tasks which use java and require at least 1GB of heap space as needed
+            logInfo("task $taskName is in the list of java task with a 1GB min. heap space requirement")
+            minMem = 1 << 30
+            maxMem += (1 << 30)
+        }
         this.chunkSize = Math.round((maxMem - minMem) / numChunks)
         logInfo("memory options for task $taskName : min ${memPrint(minMem)}, max ${memPrint(maxMem)}, and chunkSize ${memPrint(chunkSize)}")
         this.memoryPreferences = new double[numChunks] // 0 to start
@@ -72,7 +77,7 @@ class MemoryBandit {
     private boolean pollHistoricUsage(){
         try {
             def sql = new Sql(TaskDB.getDataSource())
-            def searchSql = "SELECT AVG(peak_rss), STDDEV(peak_rss), MIN(peak_rss), MAX(peak_rss) FROM taskrun WHERE task_name = (?) and wf_name like (?)"// and rl_active = false"
+            def searchSql = "SELECT AVG(peak_rss), STDDEV(peak_rss), MIN(peak_rss), MAX(peak_rss) FROM taskrun WHERE task_name = (?) and wf_name like (?) and rl_active = false"
             sql.eachRow(searchSql,[taskName,"%${this.command}%".toString()]) { row ->
                 long avg = row[0] as long
                 long stddev = row[1] as long
@@ -81,16 +86,16 @@ class MemoryBandit {
 
                 logInfo("historic data for task $taskName : avg ${memPrint(avg)} stddev ${memPrint(stddev)} min ${memPrint(min)} max ${memPrint(max)}")
 
-                if (max < min || max < this.minMem) {
+                if (max < min) {
                     logInfo("historic data makes no sense, max ${memPrint(max)} is less than the minimum ${memPrint(min)}")
                     return false
                 }
-                this.minMem = avg > this.minMem ? avg : this.minMem
+                this.minMem = avg - Math.abs(stddev) > this.minMem ? avg - Math.abs(stddev) : this.minMem
                 if (max <= this.minMem) {
                     logInfo("max is less than the adjusted minimum ${memPrint(this.minMem)}")
-                    this.maxMem = this.minMem + 2*avg
+                    this.maxMem = this.minMem * 2
                 } else {
-                    this.maxMem = max + 2*Math.abs(stddev)
+                    this.maxMem = max * 2
                 }
             }
             sql.close()
@@ -145,9 +150,8 @@ class MemoryBandit {
         sql.eachRow(searchSql,[taskName,this.lastTaskId,"%${this.command}%".toString()]) { row ->
             def rss = (long) row.peak_rss
             def mem = (long) row.memory
-            def realtime = (long) row.realtime
             logInfo("probabilities BEFORE: $memoryProbabilities")
-            updatePreferences(rss,mem,realtime)
+            updatePreferences(rss,mem)
             updateProbabilities()
             logInfo("probabilities AFTER: $memoryProbabilities")
         }
@@ -155,7 +159,7 @@ class MemoryBandit {
         logInfo("Done with SQL for Bandit $taskName")
     }
 
-    double reward(long rss, long memory, long realtime) {
+    double reward(long rss, long memory) {
         double r
         if (rss == memory + 1) {
             // if we were killed by the oom killer this is marked in the db by setting rss = mem + 1
@@ -201,12 +205,13 @@ class MemoryBandit {
             return initialConfig
         }
         if(runtype == RunType.RETRY && r <= previousConfig){
-            logError("$taskName Bandit was (probably) killed with ${memPrint(previousConfig)} but the bandit picked ${memPrint(r)} as new config. Now returning either maxMem or larger...")
+            def oldR = r
             if (previousConfig > maxMem) {
-                return previousConfig < (1 << 30) ? (1 << 30) : Math.min(previousConfig >= initialConfig ? previousConfig * 2 : initialConfig, 120 << 30) // catch those tasks which have a hard requirement for 1GB minimum, keep doubling till it works
+                r = Math.min(previousConfig >= initialConfig ? previousConfig * 2 : initialConfig, 120 << 30) // 120 GB is basically the machine's max
             } else {
-                return previousConfig < maxMem  ? maxMem : maxMem * 2 // default approach for the first two times we fail
+                r = previousConfig < maxMem  ? maxMem : maxMem * 2 // default approach for the first two times we fail
             }
+            logError("$taskName Bandit was (probably) killed with ${memPrint(previousConfig)} but the bandit picked ${memPrint(oldR)} as new config. Now returning either maxMem or larger: ${memPrint(r)}")
         }
         // the case where the task is killed with the initialConfig is ignored because it should/cant really occur
         return r
