@@ -57,7 +57,7 @@ class MemoryBandit {
             this.maxMem = initialConfig
             this.minMem = 0
         }
-        if (taskName in ['qualimap'] && minMem < (1 << 30)) { // add other tasks which use java and require at least 1GB of heap space as needed
+        if (taskName in ['qualimap','damageprofiler','adapter_removal'] && minMem < (1 << 30)) { // add other tasks which use java and require at least 1GB of heap space as needed
             logInfo("task $taskName is in the list of java task with a 1GB min. heap space requirement")
             minMem = 1 << 30
             maxMem += (1 << 30)
@@ -116,7 +116,7 @@ class MemoryBandit {
         }
     }
 
-    private void updatePreferences(long rss, long mem, long realtime){
+    private void updatePreferences(long rss, long mem){
         int memIndex = ((mem - minMem)/ chunkSize) - 1
         if (!(memIndex in 0..<numChunks)){
             log.warn("Invalid memIndex $memIndex for ${memPrint(mem)} and chunksize $chunkSize")
@@ -128,7 +128,7 @@ class MemoryBandit {
                 return
             }
         }
-        def r = reward(rss, mem, realtime)
+        def r = reward(rss, mem)
         logInfo("memory alloc'd ${memPrint(mem)}, mem usage ${memPrint(rss)} (${rss*100/mem} %) -> reward $r\n")
         for (i in 0..<numChunks) {
             def oldval = memoryPreferences[i]
@@ -206,12 +206,12 @@ class MemoryBandit {
         }
         if(runtype == RunType.RETRY && r <= previousConfig){
             def oldR = r
-            if (previousConfig > maxMem) {
+            if (previousConfig > maxMem || failcount > 2) {
                 r = Math.min(previousConfig >= initialConfig ? previousConfig * 2 : initialConfig, 120 << 30) // 120 GB is basically the machine's max
             } else {
-                r = previousConfig < maxMem  ? maxMem : maxMem * 2 // default approach for the first two times we fail
+                r = (previousConfig < maxMem && failcount <= 1) ? maxMem : maxMem * 2 // default approach for the first two times we fail
             }
-            logError("$taskName Bandit was (probably) killed with ${memPrint(previousConfig)} but the bandit picked ${memPrint(oldR)} as new config. Now returning either maxMem or larger: ${memPrint(r)}")
+            logError("$taskName Bandit was (probably) killed with ${memPrint(previousConfig)} but the bandit picked ${memPrint(oldR)} as new config (failcount $failcount). Now returning either maxMem or larger: ${memPrint(r)}")
         }
         // the case where the task is killed with the initialConfig is ignored because it should/cant really occur
         return r
