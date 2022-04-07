@@ -205,6 +205,7 @@ class MemoryBandit {
             return initialConfig
         }
         if(runtype == RunType.RETRY && r <= previousConfig){
+            // retry strategy: first try with maxMem, then double that, then try whatever is larger out of 2*2*maxMem or the initial Config, then keep doubling the memory until the task succeeds
             def oldR = r
             if (previousConfig > maxMem || failcount > 2) {
                 r = Math.min(previousConfig >= initialConfig ? previousConfig * 2 : initialConfig, 120 << 30) // 120 GB is basically the machine's max

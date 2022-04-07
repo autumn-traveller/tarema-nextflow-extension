@@ -211,10 +211,11 @@ class ReportObserver implements TraceObserver {
         if (!(trace.getProperty("status") as String).equals("FAILED")) {
             sendDataToDB(handler.getTask(), trace)
         } else {
-            log.warn("Report Observa tracer errah : $trace")
-            if(trace.get('exit') as int in 137..140 || !trace.get('peak_rss')){
+            if(trace.get('exit') as int in [1,137,138,139,140]){ // 1 and 137-140 are usually memory errors
                 log.warn("think we have an oom victim: $trace, rtime: ${trace.get("realtime")}")
                 sendDataToDB(handler.getTask(), trace)
+            } else {
+                log.warn("Report Observer non memory error (${trace.get('exit')}): $trace")
             }
         }
 

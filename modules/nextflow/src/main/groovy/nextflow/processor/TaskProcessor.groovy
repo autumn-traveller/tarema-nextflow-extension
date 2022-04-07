@@ -1061,7 +1061,7 @@ class TaskProcessor {
             final int maxErrors = task.config.getMaxErrors()
             final int maxRetries = task.config.getMaxRetries()
 
-            if( (procErrCount < maxErrors || maxErrors == -1) && taskErrCount <= maxRetries ) {
+            if( (procErrCount < maxErrors || maxErrors == -1) && taskErrCount <= Math.max(3,maxRetries) ) {
                 final taskCopy = task.makeCopy()
                 session.getExecService().submit({
                     try {
