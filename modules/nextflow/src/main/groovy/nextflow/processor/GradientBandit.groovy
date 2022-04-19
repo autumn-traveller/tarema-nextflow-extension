@@ -24,7 +24,11 @@ class GradientBandit {
         if (tooShort) {
             return
         }
-        this.cpuOptions = [1,2,4,6,8,10,12,14]
+        if (taskName in ['FASTQC','MERGED_LIB_PRESEQ','BAMBU'] ) {
+            this.cpuOptions = [4,6,8,10,12,14,16]
+        } else {
+            this.cpuOptions = [1,2,4,6,8,10,12,14]
+        }
         this.numOptions = cpuOptions.size()
         this.cpuPreferences = new double[numOptions] // 0 to start
         this.cpuProbabilities = new double[numOptions]

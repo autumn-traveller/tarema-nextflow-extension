@@ -216,6 +216,11 @@ class ReportObserver implements TraceObserver {
                 sendDataToDB(handler.getTask(), trace)
             } else {
                 log.warn("Report Observer non memory error (${trace.get('exit')}): $trace")
+                def task = handler.getTask()
+                if (task.error.message?.contains("exceeded running time") ) {
+                    log.warn('runtime exceeded, storing data as well')
+                    sendDataToDB(task, trace)
+                }
             }
         }
 
@@ -246,6 +251,8 @@ class ReportObserver implements TraceObserver {
             insertSql = 'INSERT INTO TaskRun (task_name, peak_rss, cpus, memory, realtime, rl_active, run_name, wf_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
             params = [taskName, task.getConfig().getMemory().getBytes()+1, task.getConfig().getCpus(), task.getConfig().getMemory().getBytes(), trace.get("realtime"), session.config.withLearning, session.runName, task.container]
 
+//        } else if (task.error.message?.contains("exceeded running time")) {
+//            // how should we handle this case ?
         } else {
 
             insertSql = 'INSERT INTO TaskRun (task_name, cpu_usage, rss, peak_rss, vmem, peak_vmem, rchar, wchar, cpus, memory, realtime, duration, rl_active, run_name, wf_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
