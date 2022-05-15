@@ -18,10 +18,10 @@ class MemoryBandit {
     double memoryAvgReward
     double stepSize
     String taskName
+    String command
     int numRuns
     boolean withLogs
     boolean tooShort
-    String command
     int lastTaskId
 
     private static long toMega(m) { m >> 20 }
@@ -49,13 +49,13 @@ class MemoryBandit {
         this.withLogs = withLogs
         this.stepSize = 0.1 // perhaps 0.2 or 0.05?
         this.numChunks = numChunks
-        this.minMem = 7 << 20 // 6MB is the minimum memory value for docker
         if (checkTooShort()){
             return
         }
+        this.minMem = 7 << 20 // 6MB is the minimum memory value for docker
         if (!pollHistoricUsage()){
             this.maxMem = initialConfig
-            this.minMem = 0
+            this.minMem = 7 << 20
         }
         if (taskName in ['qualimap','damageprofiler','adapter_removal'] && minMem < (1 << 30)) { // add other tasks which use java and require at least 1GB of heap space as needed
             logInfo("task $taskName is in the list of java task with a 1GB min. heap space requirement")
@@ -119,11 +119,10 @@ class MemoryBandit {
     private void updatePreferences(long rss, long mem){
         int memIndex = ((mem - minMem)/ chunkSize) - 1
         if (!(memIndex in 0..<numChunks)){
-            log.warn("Invalid memIndex $memIndex for ${memPrint(mem)} and chunksize $chunkSize")
             memIndex = Math.round(mem/chunkSize) - 1
             if (!(memIndex in 0..<numChunks)){
-                if (mem != initialConfig) {
-                    logError("Invalid memIndex even when rounding: $memIndex for ${memPrint(mem)} and chunksize $chunkSize")
+                if (mem % initialConfig != 0 && mem % maxMem != 0) {
+                    logError("Unusual memIndex even when rounding: $memIndex for ${memPrint(mem)}, chunksize $chunkSize, maxMem ${memPrint(maxMem)} and initialConfig ${memPrint(initialConfig)}")
                 }
                 return
             }

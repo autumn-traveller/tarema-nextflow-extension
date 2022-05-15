@@ -39,11 +39,14 @@ class FeedbackLoop {
                 log.warn("$taskName was killed with ${memPrint(Math.round(mem + Math.abs(stdDev)))} - now returning the max mem plus stddev ${memPrint(Math.round(maxMem + Math.abs(stdDev)))}")
                 def oldM = config.getMemory().toBytes()
                 m = Math.round(maxMem + Math.abs(stdDev))
-                if(config.getErrorCount() >= 2 || m <= oldM){
+                if(config.getErrorCount() > 2 || m <= oldM){
                     m = Math.max(m << 1,oldM << 1)
-                    m = Math.max(m,1 << 30) // some processes may need a memory argument that is at least 1 gigabyte
-                    log.warn("$taskName already has 2 errors or failed with the same memory as before, now trying with double the mem or 1GB min: ${memPrint(m)}")
+                    log.warn("$taskName already has 2 errors or failed with the same memory as before, now trying with double the mem: ${memPrint(m)}")
                 }
+            }
+            if (taskName in ['qualimap','damageprofiler','adapter_removal'] && m < (1 << 30)) { // add other tasks which use java and require at least 1GB of heap space as needed
+                withLogs && log.info("task $taskName is in the list of java task with a 1GB min. heap space requirement")
+                m = (1 << 30)
             }
             withLogs && log.info("$taskName returning new config: ${new MemoryUnit(m > minMem ? m : minMem)} mem and cpus $c")
             config.put("memory",new MemoryUnit(m > minMem ? m : minMem))

@@ -657,24 +657,23 @@ class TaskRun implements Cloneable {
         def taskName = (name != null) ? name : getName()
         if(taskName != null && withLearning ){
 //            log.warn("learning is active, enabling gradient bandit")
-            def cpuAction = BanditMap.instance.getBandit((maxcpus && maxcpus as int > 0) ? maxcpus as int : 8 ,taskName.split(" ")[0],withLogs)
-            def memAction = MemBanditMap.instance.getBandit(config.getMemory().toBytes(),10,taskName.split(" ")[0],cmd,withLogs)
             def oldCpu = config.getCpus()
+//            def cpuAction = BanditMap.instance.getBandit((maxcpus && maxcpus as int > 0) ? maxcpus as int : 8 ,taskName.split(" ")[0],withLogs)
+            def cpuAction = QCpuMap.instance.getAgent(oldCpu,taskName.split(" ")[0],cmd,session.runName,withLogs)
             def oldMem = config.getMemory()
+//            def memAction = MemBanditMap.instance.getBandit(oldMem,10,taskName.split(" ")[0],cmd,withLogs)
+            def memAction = MemAgentMap.instance.getAgent(oldMem.toBytes(),6,taskName.split(" ")[0],cmd,session.runName,withLogs)
 
             // if (FeedbackLoop.sizeTask(taskName.split(" ")[0],config,runType,withLogs)){
             //     log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was $oldCpu) memory = ${config.getMemory()} (oldConf was $oldMem)")
             // }
 
-            def allocdCpus = cpuAction.allocateCpu()
-            def allocdMem = memAction.allocateMem(this.failCount as int,this.runType,config.getMemory().toBytes())
-            if (allocdCpus > 0){
-                config.setProperty("cpus",allocdCpus)
-                config.setProperty("memory",new MemoryUnit(allocdMem))
+            def allocdCpus = cpuAction.takeAction(config)
+            def allocdMem = memAction.takeAction(config,this.failCount as int,this.runType,config.getMemory().toBytes())
+            if (allocdCpus && allocdMem){
                 config.put("bandit","active")
                 log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was ${oldCpu}) memory = ${config.getMemory().toMega()} MB (oldconf was ${oldMem.toMega()} MB)")
             } else {
-                config.setProperty("memory",new MemoryUnit(allocdMem)) // always safe
                 config.put("bandit","inactive")
             }
         } else if(!withLearning){
