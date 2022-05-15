@@ -75,7 +75,7 @@ class QCpu {
 
     private void logInfo(String var1, Object... var2){
         if(withLogs){
-            log.info("Agent \"$taskName\" ($count): $var1",var2)
+            log.info("CpuAgent \"$taskName\" ($count): $var1",var2)
         }
     }
 

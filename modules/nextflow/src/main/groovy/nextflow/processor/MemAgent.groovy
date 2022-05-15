@@ -93,7 +93,7 @@ class MemAgent {
 
     private void logInfo(String var1, Object... var2){
         if(withLogs){
-            log.info("Agent \"$taskName\" ($count): $var1",var2)
+            log.info("MemAgent \"$taskName\" ($count): $var1",var2)
         }
     }
 
@@ -132,7 +132,7 @@ class MemAgent {
             maxMem += (1 << 30)
             safeMax = 2*maxMem
         }
-        this.chunkSize = (long) (maxMem - minMem / numChunks)
+        this.chunkSize = (long) ((maxMem - minMem) / numChunks)
         this.maxStateMem = numChunks
 
         logInfo("agent config: withLogs $withLogs, command $command, Memory chunksize : ${memPrint(chunkSize)}, min: $minMem (${memPrint(minMem)}), max: $maxMem (${memPrint(maxMem)})}, safeMax: ${memPrint(safeMax)}, initialConfig: ${memPrint(safeMax)}")
@@ -372,7 +372,6 @@ class MemAgent {
             def searchSql = "SELECT COUNT(realtime), AVG(realtime) FROM taskrun WHERE task_name = (?)" // "and rl_active = false"
             sql.eachRow(searchSql,[taskName]) { row ->
                if (row.count && row.count as int >= 5 && row.avg && row.avg as int > 1000){
-                   avgRealtime = row.avg
                    tooShort = false // these tasks are long enough for the nextflow metrics to be accurate
                }
             }
