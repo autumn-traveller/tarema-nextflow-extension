@@ -219,19 +219,19 @@ class MemAgent {
                 def r = reward(mem, rss)
 
                 def newState = mem
-                if (newState > safeMax) {
+                if (mem > safeMax) {
                     newState = mem < initialConfig ? safeMax : initialConfig
                 }
                 def newData = states.get(newState)
                 def prevData = states.get(prevState)
-                if (newData && prevData ) {
-                    logInfo("Prev Action was $actionTaken, we were in $prevState and are now in $newState")
+                if (newData && prevData) {
+                    logInfo("Prev Action was $actionTaken, we were in ${memPrint(prevState)} and are now in ${memPrint(newState)}")
 
                     def qOld = prevData.q[actionTaken]
                     double newQMax = Collections.max(newData.q as Collection<? extends Double>)
-                    logInfo("qMax for ${newState} is $newQMax over ${newData.q}")
+                    logInfo("qMax for ${memPrint(newState)} is $newQMax over ${newData.q}")
                     prevData.q[actionTaken] = qOld + stepSize * (r + discount * newQMax - qOld)
-                    logInfo("Old q for ${prevState} = $qOld , New q = $qOld + $stepSize * ($r + $discount * $newQMax - $qOld) = ${prevData.q[actionTaken]}")
+                    logInfo("Old q for ${memPrint(prevState)} = $qOld , New q = $qOld + $stepSize * ($r + $discount * $newQMax - $qOld) = ${prevData.q[actionTaken]}")
 
                     prevData.timesTried[actionTaken]++
                     prevData.visited[actionTaken] = true
@@ -247,7 +247,7 @@ class MemAgent {
                         epsilon = 0.02
                     }
                 } else {
-                    logError("Unable to find data for state $newState in states map: prevState = $state")
+                    logError("Unable to find data for state ${memPrint(newState)} in states map: prevState = ${memPrint(state)}")
                 }
             }
 
