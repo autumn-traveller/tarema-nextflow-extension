@@ -220,34 +220,33 @@ class MemAgent {
 
                 def newState = mem
                 def newData = states.get(newState)
-                if (!newData) {
+                if (newData) {
+                    logInfo("Prev Action was $actionTaken, we were in $prevState and are now in $newState")
+
+                    def prevData = states.get(prevState)
+
+                    def qOld = prevData.q[actionTaken]
+
+                    double newQMax = Collections.max(newData.q as Collection<? extends Double>)
+                    logInfo("qMax for ${newState} is $newQMax over ${newData.q}")
+                    prevData.q[actionTaken] = qOld + stepSize * (r + discount * newQMax - qOld)
+                    logInfo("Old q for ${prevState} = $qOld , New q = $qOld + $stepSize * ($r + $discount * $newQMax - $qOld) = ${prevData.q[actionTaken]}")
+
+                    prevData.timesTried[actionTaken]++
+                    prevData.visited[actionTaken] = true
+
+                    this.state = newState
+                    this.curData = newData
+
+                    if (++count > 25) {
+                        epsilon = 0.25
+                    } else if (count > 50) {
+                        epsilon = 0.1
+                    } else if (count > 75) {
+                        epsilon = 0.02
+                    }
+                } else if (newState != safeMax * 2) {
                     logError("Unable to find data for state $newState in states map: prevState = $state")
-                    throw new Error("Undefined state")
-                }
-
-                logInfo("Prev Action was $actionTaken, we were in $prevState and are now in $newState")
-
-                def prevData = states.get(prevState)
-
-                def qOld = prevData.q[actionTaken]
-
-                double newQMax = Collections.max(newData.q as Collection<? extends Double>)
-                logInfo("qMax for ${newState} is $newQMax over ${newData.q}")
-                prevData.q[actionTaken] = qOld + stepSize * (r + discount * newQMax - qOld)
-                logInfo("Old q for ${prevState} = $qOld , New q = $qOld + $stepSize * ($r + $discount * $newQMax - $qOld) = ${prevData.q[actionTaken]}")
-
-                prevData.timesTried[actionTaken]++
-                prevData.visited[actionTaken] = true
-
-                this.state = newState
-                this.curData = newData
-
-                if (++count > 25) {
-                    epsilon = 0.25
-                } else if (count > 50) {
-                    epsilon = 0.1
-                } else if (count > 75) {
-                    epsilon = 0.02
                 }
             }
 
@@ -256,9 +255,14 @@ class MemAgent {
         logInfo("Done with SQL for Agent")
     }
 
-    float reward(long memory, long rss) {
+    double reward(long memory, long rss) {
         double unusedChunks = ((double) Math.max((memory - rss),0)) / ((double) chunkSize)
-        return (rss != memory+1) ? -1*unusedChunks : -2*memory/chunkSize // if we were killed by the oom killer we receive -2 * the memory allocated since we wasted it once and must rerun it with at least as much again
+        double allocatedChunks = memory/chunkSize
+        if (memory > maxMem) {
+            double cap = -1*Math.min(numChunks,unusedChunks) // if we are in the safeMax or intialConfig case we cap our punishment at -1*numChunks
+            return (rss != memory+1) ? cap : -2*numChunks // punishmennt here is -2*numChunks when we are killed because we now need to rerun with twice the memory
+        }
+        return (rss != memory+1) ? -1*unusedChunks : -1*numChunks - allocatedChunks // if we were killed by the oom killer we receive -1 * the memory allocated since we wasted it once and -1 * numChunks and we must rerun the task with maximum memory
     }
 
     void logBandit(){
@@ -310,9 +314,13 @@ class MemAgent {
             return false
         }
         readPrevRewards()
+        if (state > safeMax) {
+            // always reset our state then pick an action accordingly, then adjust memory if we are retrying due to previous failure
+            state = state < initialConfig ? safeMax : initialConfig
+        }
         def action = this.takeNewAction()
         long mem = this.state
-        logInfo("Proposed action is $action for state ${memPrint(state)}")
+        logInfo("Proposed action is $action for state ${memPrint(state)} , (failcount: $failcount)")
         switch(action){
             case NOOP:
                 break
@@ -338,20 +346,23 @@ class MemAgent {
                 logError("invalid action picked: $action in state ${memPrint(state)}")
                 return false
         }
-        if(mem < minMem || (mem > maxMem && (mem != safeMax || mem != initialConfig))){
-            logError("Invalid value chosen for mem: ${memPrint(mem)} (chunk size is ${memPrint(chunkSize)}) and min: $minMem (${memPrint(minMem)}), max: $maxMem (${memPrint(maxMem)})}, safeMax: ${memPrint(safeMax)}, initialConfig: ${memPrint(safeMax)}")
+        if(mem < minMem){
+            logError("Invalid value chosen for mem: ${memPrint(mem)} (chunk size is ${memPrint(chunkSize)}) and min: $minMem (${memPrint(minMem)}), max: $maxMem (${memPrint(maxMem)})}, safeMax: ${memPrint(safeMax)}, initialConfig: ${memPrint(initialConfig)}")
             return false
         }
 
         if(runtype == TaskProcessor.RunType.RETRY && (mem <= previousConfig || failcount >= 2)){
             // retry strategy: first try with safeMax then double that, then retry with whatever is larger out of 2*safeMax or the initial Config, then keep doubling the memory until the task succeeds
             def old = mem
-            if (previousConfig > safeMax || failcount > 2) {
-                mem = Math.min(previousConfig >= initialConfig ? previousConfig * 2 : initialConfig, 120 << 30) // 120 GB is basically the machine's max
+            long newMem
+            if (previousConfig > safeMax || failcount >= 2) {
+                newMem = previousConfig >= initialConfig ? previousConfig * 2 : initialConfig
+                // we ignore the unlikely case that we exceed system memory for now
             } else {
-                mem = (previousConfig < safeMax && failcount <= 1) ? safeMax : safeMax * 2 // default approach for the first two times we fail
+                newMem = (previousConfig < safeMax && failcount <= 1) ? safeMax : (safeMax * 2) // default approach for the first two times we fail
             }
-            logError("$taskName Bandit was (probably) killed with ${memPrint(previousConfig)} but the bandit picked ${memPrint(old)} as new config (failcount $failcount). Now returning either maxMem or larger: ${memPrint(mem)}")
+            mem = Math.max(mem,newMem)
+            logError("$taskName Agent was (probably) killed with ${memPrint(previousConfig)} but the bandit picked ${memPrint(old)} as new config (failcount $failcount , initalConfig ${memPrint(initialConfig)}, safeMax ${memPrint(safeMax)}). Now returning either maxMem or larger: ${memPrint(mem)}")
         }
 
         config.put('memory', new MemoryUnit(mem))

@@ -248,7 +248,7 @@ class ReportObserver implements TraceObserver {
         if(trace.get('exit') as int in 137..140 || !trace.get('peak_rss')){
             // killed by oom killer
             log.info("Task $taskName killed by oom killer")
-            insertSql = 'INSERT INTO TaskRun (task_name, peak_rss, cpus, memory, realtime, rl_active, run_name, wf_name, duration, rchar, wchar) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            insertSql = 'INSERT INTO TaskRun (task_name, peak_rss, cpus, memory, realtime, rl_active, run_name, wf_name, duration, rchar, wchar) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
             params = [taskName, task.getConfig().getMemory().getBytes()+1, task.getConfig().getCpus(), task.getConfig().getMemory().getBytes(), trace.get("realtime"), session.config.withLearning, session.runName, task.container, task.getConfig().get("memAction"), task.getConfig().get("prevMemState"),task.getConfig().get("cpuAction")]
 
 //        } else if (task.error.message?.contains("exceeded running time")) {
@@ -256,7 +256,7 @@ class ReportObserver implements TraceObserver {
         } else {
 
             insertSql = 'INSERT INTO TaskRun (task_name, cpu_usage, rss, peak_rss, vmem, peak_vmem, rchar, wchar, cpus, memory, realtime, duration, rl_active, run_name, wf_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-            params = [taskName, trace.get("%cpu"), trace.get("rss"), trace.get("peak_rss"), trace.get("vmem"), trace.get("peak_vmem"), task.getConfig().get("prevMemState"), trace.get("cpuAction"), task.getConfig().getCpus(), task.getConfig().getMemory().getBytes(), trace.get("realtime"), task.getConfig().get("memAction"), session.config.withLearning, session.runName, task.container]
+            params = [taskName, trace.get("%cpu"), trace.get("rss"), trace.get("peak_rss"), trace.get("vmem"), trace.get("peak_vmem"), task.getConfig().get("prevMemState"), task.getConfig().get("cpuAction"), task.getConfig().getCpus(), task.getConfig().getMemory().getBytes(), trace.get("realtime"), task.getConfig().get("memAction"), session.config.withLearning, session.runName, task.container]
             number_tasks_executed++
             if (runMetricsMap.size() < 5) {
                 runMetricsMap.put("cpu", Double.valueOf(trace.get("%cpu") as String))
