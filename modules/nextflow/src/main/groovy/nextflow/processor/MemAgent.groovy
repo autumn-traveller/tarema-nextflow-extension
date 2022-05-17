@@ -219,14 +219,15 @@ class MemAgent {
                 def r = reward(mem, rss)
 
                 def newState = mem
+                if (newState > safeMax) {
+                    newState = mem < initialConfig ? safeMax : initialConfig
+                }
                 def newData = states.get(newState)
-                if (newData) {
+                def prevData = states.get(prevState)
+                if (newData && prevData ) {
                     logInfo("Prev Action was $actionTaken, we were in $prevState and are now in $newState")
 
-                    def prevData = states.get(prevState)
-
                     def qOld = prevData.q[actionTaken]
-
                     double newQMax = Collections.max(newData.q as Collection<? extends Double>)
                     logInfo("qMax for ${newState} is $newQMax over ${newData.q}")
                     prevData.q[actionTaken] = qOld + stepSize * (r + discount * newQMax - qOld)
@@ -245,7 +246,7 @@ class MemAgent {
                     } else if (count > 75) {
                         epsilon = 0.02
                     }
-                } else if (newState != safeMax * 2) {
+                } else {
                     logError("Unable to find data for state $newState in states map: prevState = $state")
                 }
             }
@@ -315,8 +316,14 @@ class MemAgent {
         }
         readPrevRewards()
         if (state > safeMax) {
+            logInfo("Currently in a retry state: ${memPrint(state)}")
             // always reset our state then pick an action accordingly, then adjust memory if we are retrying due to previous failure
             state = state < initialConfig ? safeMax : initialConfig
+            this.curData = states.get(state)
+            if (!curData) {
+                logError("Unable to get data for state ${memPrint(state)}")
+                return false
+            }
         }
         def action = this.takeNewAction()
         long mem = this.state
