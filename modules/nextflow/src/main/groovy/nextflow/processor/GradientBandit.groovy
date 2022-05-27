@@ -106,7 +106,7 @@ class GradientBandit {
 ////                        stepSize = 0.01
 //                    }
 
-                    // as times get larger the scaling down of the stepsize is too harsh so we nudge it upwards
+                    // as times get larger the scaling down of the stepsize can be too harsh so we nudge it a upwards
 
                     if(row.avg > 20000) {
 //                        stepSize = 0.005
@@ -114,11 +114,11 @@ class GradientBandit {
                     }
                     if(row.avg > 40000) {
 //                        stepSize = 0.001
-                        modFactor = 5000
+                        modFactor = 2500
                     }
                     // havent seen a task this large yet...
                     if(row.avg > 1000000) {
-                        modFactor = 10000
+                        modFactor = 5000
                     }
 
                     stepSize = modFactor * 0.1 / row.avg

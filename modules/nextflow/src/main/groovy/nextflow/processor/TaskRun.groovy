@@ -658,11 +658,11 @@ class TaskRun implements Cloneable {
         if(taskName != null && withLearning ){
 //            log.warn("learning is active, enabling gradient bandit")
             def oldCpu = config.getCpus()
-//            def cpuAction = BanditMap.instance.getBandit((maxcpus && maxcpus as int > 0) ? maxcpus as int : 8 ,taskName.split(" ")[0],withLogs)
-            def cpuAction = QCpuMap.instance.getAgent(oldCpu,taskName.split(" ")[0],cmd,session.runName,withLogs)
+            def cpuAction = BanditMap.instance.getBandit((maxcpus && maxcpus as int > 0) ? maxcpus as int : 8 ,taskName.split(" ")[0],withLogs)
+//            def cpuAction = QCpuMap.instance.getAgent(oldCpu,taskName.split(" ")[0],cmd,session.runName,withLogs)
             def oldMem = config.getMemory()
-//            def memAction = MemBanditMap.instance.getBandit(oldMem,10,taskName.split(" ")[0],cmd,withLogs)
-            def memAction = MemAgentMap.instance.getAgent(oldMem.toBytes(),6,taskName.split(" ")[0],cmd,session.runName,withLogs)
+            def memAction = MemBanditMap.instance.getBandit(oldMem.toBytes(),6,taskName.split(" ")[0],cmd,withLogs)
+//            def memAction = MemAgentMap.instance.getAgent(oldMem.toBytes(),6,taskName.split(" ")[0],cmd,session.runName,withLogs)
 
             // if (FeedbackLoop.sizeTask(taskName.split(" ")[0],config,runType,withLogs)){
             //     log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was $oldCpu) memory = ${config.getMemory()} (oldConf was $oldMem)")

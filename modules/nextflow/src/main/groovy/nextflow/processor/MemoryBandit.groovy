@@ -12,6 +12,7 @@ class MemoryBandit {
     long minMem
     long chunkSize
     long initialConfig
+    long safeMax
     int numChunks
     double[] memoryPreferences
     double[] memoryProbabilities
@@ -55,7 +56,10 @@ class MemoryBandit {
         this.minMem = 7 << 20 // 6MB is the minimum memory value for docker
         if (!pollHistoricUsage()){
             this.maxMem = initialConfig
+            this.safeMax = initialConfig
             this.minMem = 7 << 20
+        } else {
+            this.safeMax = 2*maxMem;
         }
         if (taskName in ['qualimap','damageprofiler','adapter_removal'] && minMem < (1 << 30)) { // add other tasks which use java and require at least 1GB of heap space as needed
             logInfo("task $taskName is in the list of java task with a 1GB min. heap space requirement")
@@ -63,7 +67,8 @@ class MemoryBandit {
             maxMem += (1 << 30)
         }
         this.chunkSize = Math.round((maxMem - minMem) / numChunks)
-        logInfo("memory options for task $taskName : min ${memPrint(minMem)}, max ${memPrint(maxMem)}, and chunkSize ${memPrint(chunkSize)}")
+        logInfo("memory options for task $taskName : min ${memPrint(minMem)}, max ${memPrint(maxMem)}, chunkSize ${memPrint(chunkSize)}, safeMax = ${memPrint(safeMax)}, initialConfig = ${memPrint(initialConfig)}")
+        this.numChunks += 2 // 2 extra "safety" states: safeMax and initialConfig
         this.memoryPreferences = new double[numChunks] // 0 to start
         this.memoryProbabilities = new double[numChunks]
         for (i in 0..<numChunks) {
@@ -118,6 +123,11 @@ class MemoryBandit {
 
     private void updatePreferences(long rss, long mem){
         int memIndex = ((mem - minMem)/ chunkSize) - 1
+        if (mem == safeMax) {
+            memIndex = numChunks - 2
+        } else if (mem == initialConfig) {
+            memIndex = numChunks - 1
+        }
         if (!(memIndex in 0..<numChunks)){
             memIndex = Math.round(mem/chunkSize) - 1
             if (!(memIndex in 0..<numChunks)){
@@ -160,14 +170,16 @@ class MemoryBandit {
 
     double reward(long rss, long memory) {
         double r
+        int numChunks = this.numChunks - 2
         if (rss == memory + 1) {
             // if we were killed by the oom killer this is marked in the db by setting rss = mem + 1
             // and we receive -1 * (maxChunk + chunks allocated) as the reward because we have wasted that much memory and must run the task again which will cost more memory
-            r = -1*(numChunks + (memory - minMem)/chunkSize)
+            // for the safeMax and initialConfig states the punishment is capped at -1 or -2 * numChunks
+            r = memory < safeMax ? -1*(numChunks + (memory - minMem)/chunkSize) : -2*numChunks
         } else {
             // sometimes rss is > mem but somehow the task succeeded anyways...
             double unusedChunks = Math.max((memory - Math.max(rss,minMem)),0) / ((double) chunkSize)
-            r = -1*unusedChunks
+            r = memory < safeMax ? -1*unusedChunks : -1*numChunks
         }
         memoryAvgReward = (numRuns * memoryAvgReward + r)/(numRuns + 1)
         numRuns++
@@ -189,27 +201,35 @@ class MemoryBandit {
             return initialConfig
         }
         readPrevRewards()
+        def index = 0
         long r = 0
         def rand = Math.random()
         double pdf = 0
-        for (i in 0..<numChunks) {
+        for (i in 0..<numChunks-2) {
             pdf += memoryProbabilities[i]
             if (rand <= pdf){
-                r = (i + 1)*chunkSize + minMem
                 break
             }
+            index++
+        }
+        if (index < numChunks - 2){
+            r = (index + 1)*chunkSize + minMem
+        } else if (index == numChunks - 2){
+            r = safeMax
+        } else if (index == numChunks - 1){
+            r = initialConfig
         }
         if(r == 0) {
             logError("$taskName Bandit couldnt pick a memory allocation, are the probabilities okay? ($memoryProbabilities) ... defaulting to original config")
             return initialConfig
         }
-        if(runtype == RunType.RETRY && r <= previousConfig){
+        if(runtype == RunType.RETRY && (r <= previousConfig || failcount >= 2)){
             // retry strategy: first try with maxMem, then double that, then try whatever is larger out of 2*2*maxMem or the initial Config, then keep doubling the memory until the task succeeds
             def oldR = r
-            if (previousConfig > maxMem || failcount > 2) {
-                r = Math.min(previousConfig >= initialConfig ? previousConfig * 2 : initialConfig, 120 << 30) // 120 GB is basically the machine's max
+            if (previousConfig > maxMem || failcount >= 2) {
+                r = previousConfig >= initialConfig ? previousConfig * 2 : initialConfig
             } else {
-                r = (previousConfig < maxMem && failcount <= 1) ? maxMem : maxMem * 2 // default approach for the first two times we fail
+                r = (previousConfig < maxMem && failcount <= 1) ? safeMax : safeMax * 2 // default approach for the first two times we fail
             }
             logError("$taskName Bandit was (probably) killed with ${memPrint(previousConfig)} but the bandit picked ${memPrint(oldR)} as new config (failcount $failcount). Now returning either maxMem or larger: ${memPrint(r)}")
         }
