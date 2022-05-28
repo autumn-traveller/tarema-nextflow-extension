@@ -668,8 +668,8 @@ class TaskRun implements Cloneable {
             //     log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was $oldCpu) memory = ${config.getMemory()} (oldConf was $oldMem)")
             // }
 
-            def allocdCpus = cpuAction.takeAction(config)
-            def allocdMem = memAction.takeAction(config,this.failCount as int,this.runType,config.getMemory().toBytes())
+            def allocdCpus = cpuAction.allocateCpu()
+            def allocdMem = memAction.allocateMem(this.failCount as int,this.runType,config.getMemory().toBytes())
             if (allocdCpus && allocdMem){
                 config.put("bandit","active")
                 log.info("Inside resolve. Task \"${taskName}\" with CONFIG: cpus = ${config.getCpus()} (oldconf was ${oldCpu}) memory = ${config.getMemory().toMega()} MB (oldconf was ${oldMem.toMega()} MB)")

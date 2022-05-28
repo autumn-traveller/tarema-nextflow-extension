@@ -49,7 +49,6 @@ class MemoryBandit {
         this.command = cmd.split("\\./evaluation_assets/nf-core/")[1].replace('/','')
         this.withLogs = withLogs
         this.stepSize = 0.1 // perhaps 0.2 or 0.05?
-        this.numChunks = numChunks
         if (checkTooShort()){
             return
         }
@@ -68,8 +67,9 @@ class MemoryBandit {
         }
         this.chunkSize = Math.round((maxMem - minMem) / numChunks)
         logInfo("memory options for task $taskName : min ${memPrint(minMem)}, max ${memPrint(maxMem)}, chunkSize ${memPrint(chunkSize)}, safeMax = ${memPrint(safeMax)}, initialConfig = ${memPrint(initialConfig)}")
-        this.numChunks += 2 // 2 extra "safety" states: safeMax and initialConfig
-        this.memoryPreferences = new double[numChunks] // 0 to start
+        numChunks += 2 // 2 extra "safety" states: safeMax and initialConfig
+        this.numChunks = numChunks
+        this.memoryPreferences = new double[numChunks] // all 0 to start
         this.memoryProbabilities = new double[numChunks]
         for (i in 0..<numChunks) {
             memoryProbabilities[i] = 1.0/((double) numChunks) // initial probability is the same
@@ -128,11 +128,11 @@ class MemoryBandit {
         } else if (mem == initialConfig) {
             memIndex = numChunks - 1
         }
-        if (!(memIndex in 0..<numChunks)){
-            memIndex = Math.round(mem/chunkSize) - 1
-            if (!(memIndex in 0..<numChunks)){
+        if (!(memIndex in 0..<numChunks-2)){
+            memIndex = Math.round((mem-minMem)/chunkSize) - 1
+            if (!(memIndex in 0..<numChunks-2)){
                 if (mem % initialConfig != 0 && mem % maxMem != 0) {
-                    logError("Unusual memIndex even when rounding: $memIndex for ${memPrint(mem)}, chunksize $chunkSize, maxMem ${memPrint(maxMem)} and initialConfig ${memPrint(initialConfig)}")
+                    logError("Unusual memIndex even when rounding: $memIndex for ${memPrint(mem)}, chunksize $chunkSize, minMem ${memPrint(minMem)} maxMem ${memPrint(maxMem)} and initialConfig ${memPrint(initialConfig)}")
                 }
                 return
             }
@@ -205,7 +205,7 @@ class MemoryBandit {
         long r = 0
         def rand = Math.random()
         double pdf = 0
-        for (i in 0..<numChunks-2) {
+        for (i in 0..<numChunks) {
             pdf += memoryProbabilities[i]
             if (rand <= pdf){
                 break
