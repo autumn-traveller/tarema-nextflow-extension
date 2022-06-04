@@ -4,6 +4,8 @@ import groovy.sql.Sql
 import groovy.util.logging.Slf4j
 import nextflow.TaskDB
 import nextflow.processor.TaskProcessor.RunType
+import nextflow.util.MemoryUnit
+
 import java.sql.SQLException
 
 @Slf4j
@@ -196,9 +198,9 @@ class MemoryBandit {
         logInfo(s)
     }
 
-    public synchronized long allocateMem(int failcount, RunType runtype, long previousConfig){
+    public synchronized boolean allocateMem(TaskConfig config, int failcount, RunType runtype, long previousConfig){
         if(tooShort){
-            return initialConfig
+            return false
         }
         readPrevRewards()
         def index = 0
@@ -221,7 +223,7 @@ class MemoryBandit {
         }
         if(r == 0) {
             logError("$taskName Bandit couldnt pick a memory allocation, are the probabilities okay? ($memoryProbabilities) ... defaulting to original config")
-            return initialConfig
+            return false
         }
         if(runtype == RunType.RETRY && (r <= previousConfig || failcount >= 2)){
             // retry strategy: first try with maxMem, then double that, then try whatever is larger out of 2*2*maxMem or the initial Config, then keep doubling the memory until the task succeeds
@@ -234,7 +236,8 @@ class MemoryBandit {
             logError("$taskName Bandit was (probably) killed with ${memPrint(previousConfig)} but the bandit picked ${memPrint(oldR)} as new config (failcount $failcount). Now returning either maxMem or larger: ${memPrint(r)}")
         }
         // the case where the task is killed with the initialConfig is ignored because it should/cant really occur
-        return r
+        config.put('memory', new MemoryUnit(r))
+        return true
     }
 
     private boolean checkTooShort(){
